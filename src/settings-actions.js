@@ -49,6 +49,7 @@
 // keep validate side-effect-free.
 
 const { CURRENT_VERSION, AGENT_FLAGS } = require("./prefs");
+const { validateAgentLauncherUpdate } = require("./agent-launcher");
 const { isPlainObject } = require("./theme-loader");
 
 // ── Validator helpers ──
@@ -196,7 +197,7 @@ const updateRegistry = {
   positionSaved: requireBoolean("positionSaved"),
 
   // ── Pure data prefs (function-form: validator only) ──
-  lang: requireEnum("lang", ["en", "zh", "ko"]),
+  lang: requireEnum("lang", ["en", "zh"]),
   soundMuted: requireBoolean("soundMuted"),
   bubbleFollowPet: requireBoolean("bubbleFollowPet"),
   hideBubbles: requireBoolean("hideBubbles"),
@@ -349,6 +350,9 @@ const updateRegistry = {
 
   // ── Phase 2/3 placeholders — schema reserves these so applyUpdate accepts them ──
   agents: requirePlainObject("agents"),
+  agentLauncher(value) {
+    return validateAgentLauncherUpdate(value);
+  },
   themeOverrides: requirePlainObject("themeOverrides"),
 
   // Phase 3b-swap: per-theme variant selection. NO effect — the runtime switch

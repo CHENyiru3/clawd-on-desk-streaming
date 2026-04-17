@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## 项目概述
 
-Clawd 桌宠 — 一个 Electron 桌面宠物，通过 hook 系统和日志轮询实时感知 AI coding agent 的工作状态并播放对应的像素风动画（SVG / APNG / GIF / PNG 等）。支持 **Claude Code**（command + HTTP hook）、**Codex CLI**（JSONL 日志轮询）、**Copilot CLI**（command hook）、**Cursor Agent**（`~/.cursor/hooks.json`，stdin JSON + stdout JSON）、**Gemini CLI**（session JSON 轮询）、**Kiro CLI**（per-agent `~/.kiro/agents/*.json`）、**CodeBuddy**（Claude Code-兼容 hook）、**opencode**（in-process plugin + 反向 HTTP bridge）并行运行。内置两套主题 **Clawd**（像素螃蟹）与 **Calico**（三花猫），并支持用户自定义主题。支持 Windows、macOS 和 Linux，UI 三语（en / zh / ko）。
+Clawd 桌宠 — 一个 Electron 桌面宠物，通过 hook 系统和日志轮询实时感知 AI coding agent 的工作状态并播放对应的像素风动画（SVG / APNG / GIF / PNG 等）。支持 **Claude Code**（command + HTTP hook）、**Codex CLI**（JSONL 日志轮询）、**Copilot CLI**（command hook）、**Cursor Agent**（`~/.cursor/hooks.json`，stdin JSON + stdout JSON）、**Gemini CLI**（session JSON 轮询）、**Kiro CLI**（per-agent `~/.kiro/agents/*.json`）、**CodeBuddy**（Claude Code-兼容 hook）、**opencode**（in-process plugin + 反向 HTTP bridge）并行运行。内置两套主题 **Clawd**（像素螃蟹）与 **Calico**（三花猫），并支持用户自定义主题。支持 Windows、macOS 和 Linux，UI 双语（en / zh）。
 
 ## 常用命令
 
@@ -158,7 +158,7 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 | `src/theme-loader.js` | 主题运行时（~1400 行）：加载 `theme.json`、必需状态校验、变体 merge、能力感知 overrides、SVG 白名单消毒、用户主题目录发现 |
 | `src/agent-gate.js` | 纯函数 gate：`isAgentEnabled(snapshot, id)` / `isAgentPermissionsEnabled(...)`，默认 true 兼容旧 prefs |
 | `src/animation-cycle.js` | 解析 SVG/APNG 的动画周期（精确 / 估算 / static / unavailable），供渲染循环与抖动检测使用 |
-| `src/i18n.js` | 多语言字符串表（en / zh / ko），菜单与气泡按钮共享 |
+| `src/i18n.js` | 多语言字符串表（en / zh），菜单与气泡按钮共享 |
 | `src/state.js` | 状态机核心：setState/applyState、多会话追踪、resolveDisplayState、DND、wake poll、进程存活检测、session submenu |
 | `src/server.js` | HTTP 服务：/state（GET 健康检查 + POST 状态更新）、/permission（权限 hook）、端口发现、hook 注册 |
 | `src/permission.js` | 权限气泡：BrowserWindow 创建/堆叠/销毁、allow/deny/suggestion 决策、PASSTHROUGH_TOOLS |
@@ -166,7 +166,7 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 | `src/update-bubble.js` + `update-bubble.html` | 自定义更新提示气泡（替代原生对话框），与 `preload-update-bubble.js` 配对 |
 | `src/focus.js` | 终端聚焦：持久 PowerShell 进程 + C# FFI（Windows）、osascript 序列化（macOS）、VS Code tab 聚焦 |
 | `src/mini.js` | 极简模式：边缘吸附、螃蟹步入场、抛物线跳跃、peek hover、窗口滑动动画 |
-| `src/menu.js` | 菜单系统：i18n（en / zh / ko）、右键菜单、系统托盘、contextMenuOwner、语言切换、窗口缩放 |
+| `src/menu.js` | 菜单系统：i18n（en / zh）、右键菜单、系统托盘、contextMenuOwner、语言切换、窗口缩放 |
 | `src/tick.js` | 主循环（50ms）：光标轮询、mouseOverPet 计算、mini peek、idle→sleep 序列、眼球位置计算 + dedup |
 | `src/renderer.js` | 渲染进程（纯 view）：动画切换（预加载防闪烁）、眼球 DOM 挂接、接收 IPC 触发的反应动画 |
 | `src/hit.html` / `hit-renderer.js` / `hit-geometry.js` / `preload-hit.js` | 输入窗口：setShape 小矩形、pointer capture 拖拽、多击反应、hitbox 几何计算 |
@@ -271,7 +271,7 @@ opencode 是唯一**以 plugin 形式集成**的 agent，其他 agent 都是 hoo
 
 ### i18n 国际化
 
-- 支持英文（en）、中文（zh）、韩语（ko），通过右键菜单 / 托盘菜单 Language 切换
+- 支持英文（en）、中文（zh），通过右键菜单 / 托盘菜单 Language 切换
 - 字符串表集中在 `src/i18n.js`，菜单 / 气泡按钮 / Settings Panel / 更新气泡共用同一份
 - 语言偏好持久化到 `clawd-prefs.json`，启动时通过 `hydrate()` 灌入 controller
 

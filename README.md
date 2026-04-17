@@ -4,8 +4,6 @@
 <h1 align="center">Clawd on Desk</h1>
 <p align="center">
   <a href="README.zh-CN.md">中文版</a>
-  ·
-  <a href="README.ko-KR.md">한국어</a>
 </p>
 <p align="center">
   <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge-flat.svg" alt="Mentioned in Awesome Claude Code"></a>
@@ -59,7 +57,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 - **Do Not Disturb** — right-click or tray menu to enter sleep mode; all hook events are silenced until you wake Clawd. Permission bubbles are suppressed during DND — opencode falls back to its built-in TUI prompt, and Claude Code will handle permissions automatically
 - **Sound effects** — short audio cues on task completion and permission requests (toggle via right-click menu; 10s cooldown, auto-muted during DND)
 - **System tray** — resize (S/M/L), DND mode, language switch, auto-start, check for updates
-- **i18n** — English, Chinese, and Korean UI; switch via right-click menu or tray
+- **i18n** — English and Chinese UI; switch via right-click menu or tray
 - **Auto-update** — checks GitHub releases; Windows installs NSIS updates on quit, macOS/Linux `git pull` + restart when running from a cloned repo
 
 ## Animations

@@ -32,6 +32,21 @@ const STRINGS = {
     agentsTitle: "Agents",
     agentsSubtitle: "Turn tracking on or off per agent. Disabled agents stop log monitors and drop hook events at the HTTP boundary — they won't drive the pet, show permission bubbles, or keep sessions.",
     agentsEmpty: "No agents registered.",
+    sectionAgentLauncher: "CLI agent launcher",
+    agentLauncherSubtitle:
+      "Open the system terminal and run a CLI agent (default: hermes — same idea as codex or claude). Command must be a single line without shell metacharacters. Empty working directory uses your home folder.",
+    rowAgentLauncherEnabled: "Enable launcher",
+    rowAgentLauncherEnabledDesc:
+      "Shows Open CLI agent in the tray and pet menu. Optional gestures below only apply when this is on.",
+    rowAgentLauncherCommand: "Command",
+    rowAgentLauncherCommandDesc: "Executable or path plus args, one line (max 256 characters).",
+    rowAgentLauncherCwd: "Working directory",
+    rowAgentLauncherCwdDesc: "Optional. Leave blank for home. Invalid paths fall back to home at launch.",
+    rowAgentLauncherTrigger: "Extra triggers",
+    triggerMenuOnly: "Menus only",
+    triggerTripleClick: "Triple-click on idle pet (opens CLI)",
+    triggerFocusFallback: "When pet click has no session to focus, open CLI instead",
+    triggerTripleAndFocus: "Triple-click + focus-or-open fallback",
     eventSourceHook: "Hook",
     eventSourceLogPoll: "Log poll",
     eventSourcePlugin: "Plugin",
@@ -62,7 +77,6 @@ const STRINGS = {
     toastSaveFailed: "Couldn't save: ",
     langEnglish: "English",
     langChinese: "中文",
-    langKorean: "한국어",
     themeTitle: "Theme",
     themeSubtitle: "Pick a theme for Clawd. Cards show built-in + capability badges so you can see tracked/static/mini differences before switching.",
     themeEmpty: "No themes available.",
@@ -157,6 +171,20 @@ const STRINGS = {
     agentsTitle: "Agent 管理",
     agentsSubtitle: "按 agent 类型开关追踪。关闭后会停掉日志监视器、在 HTTP 入口丢弃 hook 事件——不会再驱动桌宠、不弹权限气泡、不记会话。",
     agentsEmpty: "没有已注册的 agent。",
+    sectionAgentLauncher: "CLI 代理启动器",
+    agentLauncherSubtitle:
+      "在系统终端里运行 CLI 代理（默认 hermes，与 codex、claude 同类）。命令须单行、无 shell 元字符；工作目录留空用主目录。",
+    rowAgentLauncherEnabled: "启用启动器",
+    rowAgentLauncherEnabledDesc: "在托盘与桌宠菜单显示「打开 CLI 代理」。下面手势仅在开启时生效。",
+    rowAgentLauncherCommand: "命令",
+    rowAgentLauncherCommandDesc: "可执行文件或路径与参数，一行（最多 256 字符）。",
+    rowAgentLauncherCwd: "工作目录",
+    rowAgentLauncherCwdDesc: "可选；留空用主目录。若路径无效，启动时会回退到主目录。",
+    rowAgentLauncherTrigger: "额外触发",
+    triggerMenuOnly: "仅菜单",
+    triggerTripleClick: "待机时三连击桌宠（打开 CLI）",
+    triggerFocusFallback: "点击聚焦无会话时改为打开 CLI",
+    triggerTripleAndFocus: "三连击 + 无会话时打开 CLI",
     eventSourceHook: "Hook",
     eventSourceLogPoll: "日志轮询",
     eventSourcePlugin: "插件",
@@ -187,7 +215,6 @@ const STRINGS = {
     toastSaveFailed: "保存失败：",
     langEnglish: "English",
     langChinese: "中文",
-    langKorean: "한국어",
     themeTitle: "主题",
     themeSubtitle: "为 Clawd 选择一个主题。卡片会显示内建和能力角标，切换前就能看出 tracked / static / mini 等差异。",
     themeEmpty: "没有可用的主题。",
@@ -265,131 +292,6 @@ const STRINGS = {
     animOverridesModalCancel: "取消",
     animOverridesRefresh: "刷新列表",
   },
-  ko: {
-    settingsTitle: "설정",
-    settingsSubtitle: "데스크톱에서 Clawd의 동작 방식을 설정합니다.",
-    sidebarGeneral: "일반",
-    sidebarAgents: "에이전트",
-    sidebarTheme: "테마",
-    sidebarAnimMap: "애니메이션 맵",
-    sidebarAnimOverrides: "애니메이션 오버라이드",
-    sidebarShortcuts: "단축키",
-    sidebarAbout: "정보",
-    sidebarSoon: "예정",
-    sectionAppearance: "외관",
-    sectionStartup: "시작",
-    sectionBubbles: "말풍선",
-    agentsTitle: "에이전트",
-    agentsSubtitle: "에이전트별로 추적을 켜거나 끕니다. 비활성화된 에이전트는 로그 모니터를 멈추고 HTTP 경계에서 hook 이벤트를 버리므로, 펫을 움직이거나 권한 말풍선을 띄우거나 세션을 유지하지 않습니다.",
-    agentsEmpty: "등록된 에이전트가 없습니다.",
-    eventSourceHook: "훅",
-    eventSourceLogPoll: "로그 폴링",
-    eventSourcePlugin: "플러그인",
-    badgePermissionBubble: "권한 말풍선",
-    rowAgentPermissions: "팝업 말풍선 표시",
-    rowAgentPermissionsDesc: "끄면 이 에이전트는 Clawd 말풍선 대신 자체 터미널에서 프롬프트를 처리합니다.",
-    rowLanguage: "언어",
-    rowLanguageDesc: "메뉴와 말풍선의 인터페이스 언어입니다.",
-    rowSound: "효과음",
-    rowSoundDesc: "Clawd가 작업을 마치거나 입력을 요청할 때 알림음을 재생합니다.",
-    rowOpenAtLogin: "로그인 시 자동 실행",
-    rowOpenAtLoginDesc: "로그인할 때 Clawd를 자동으로 시작합니다.",
-    rowManageClaudeHooks: "Claude hooks 자동 관리",
-    rowManageClaudeHooksDesc: "시작 시 Claude hooks를 동기화하고 `~/.claude/settings.json`이 덮어써지면 다시 복구합니다.",
-    rowManageClaudeHooksOffNote: "이 옵션을 꺼도 이후 자동 관리만 중지됩니다. 기존 Claude hooks는 직접 연결 해제하기 전까지 남아 있습니다.",
-    actionDisconnectClaudeHooks: "연결 해제",
-    rowStartWithClaude: "Claude Code와 함께 시작",
-    rowStartWithClaudeDesc: "Claude Code 세션이 시작될 때마다 Clawd를 자동으로 실행합니다.",
-    rowStartWithClaudeDisabledDesc: "Claude hooks 자동 관리가 필요합니다. 관리가 꺼져 있는 동안에는 포트 변경이나 설정 덮어쓰기를 자동으로 복구하지 않습니다.",
-    rowBubbleFollow: "말풍선이 Clawd를 따라다님",
-    rowBubbleFollowDesc: "권한 및 업데이트 말풍선을 화면 구석 대신 펫 옆에 표시합니다.",
-    rowHideBubbles: "모든 말풍선 숨기기",
-    rowHideBubblesDesc: "권한, 알림, 업데이트 말풍선을 모두 숨깁니다.",
-    rowShowSessionId: "세션 ID 표시",
-    rowShowSessionIdDesc: "말풍선 제목과 Sessions 메뉴에 짧은 세션 ID를 덧붙입니다.",
-    placeholderTitle: "곧 제공 예정",
-    placeholderDesc: "이 패널은 향후 Clawd 릴리스에 추가됩니다. 계획은 docs/plan-settings-panel.md에 있습니다.",
-    toastSaveFailed: "저장 실패: ",
-    langEnglish: "English",
-    langChinese: "中文",
-    langKorean: "한국어",
-    themeTitle: "테마",
-    themeSubtitle: "Clawd의 테마를 선택합니다. 카드에는 기본 제공/능력 배지가 표시되어 tracked/static/mini 차이를 미리 볼 수 있습니다.",
-    themeEmpty: "사용 가능한 테마가 없습니다.",
-    themeBadgeBuiltin: "기본 제공",
-    themeBadgeActive: "활성",
-    themeCapabilityTracked: "커서 추적 idle",
-    themeCapabilityAnimated: "애니메이션 idle",
-    themeCapabilityStatic: "정적 테마",
-    themeCapabilityMini: "Mini",
-    themeCapabilityDirectSleep: "직접 수면",
-    themeCapabilityNoReactions: "반응 없음",
-    themeActiveIndicator: "\u2713 활성",
-    themeThumbMissing: "\u{1F3AD}",
-    themeDeleteLabel: "테마 삭제",
-    themeVariantStripLabel: "변형",
-    toastThemeDeleted: "테마를 삭제했습니다.",
-    toastThemeDeleteFailed: "테마 삭제 실패: ",
-    animMapTitle: "애니메이션 맵",
-    animMapSubtitle: "개별 인터럽트 애니메이션을 끕니다. 이벤트는 계속 발생하지만 Clawd는 선택한 상태의 화면과 소리만 건너뜁니다.",
-    animMapSemanticsNote: "비활성화 = 화면 없음 + 소리 없음. 권한 말풍선, 세션, 터미널 포커스는 그대로 작동합니다.",
-    animMapResetAll: "모두 초기화",
-    animMapAttentionLabel: "작업 완료 (happy)",
-    animMapAttentionDesc: "에이전트가 한 턴을 마쳤을 때 재생되는 즐거운 바운스 애니메이션입니다. (Stop / PostCompact)",
-    animMapErrorLabel: "오류 플래시",
-    animMapErrorDesc: "도구 호출이 실패했을 때 흔들리는 애니메이션입니다.",
-    animMapSweepingLabel: "컨텍스트 정리",
-    animMapSweepingDesc: "PreCompact / 컨텍스트 정리 중 빗자루 애니메이션입니다.",
-    animMapNotificationLabel: "알림",
-    animMapNotificationDesc: "권한 요청과 입력 요청 시 재생되는 종 애니메이션입니다.",
-    animMapCarryingLabel: "워크트리 운반",
-    animMapCarryingDesc: "worktree가 생성될 때 재생되는 운반 애니메이션입니다.",
-    toastAnimMapResetOk: "애니메이션 오버라이드를 초기화했습니다.",
-    animOverridesTitle: "애니메이션 오버라이드",
-    animOverridesSubtitle: "현재 테마의 카드별 파일을 바꾸고 페이드/복귀 타이밍을 조정합니다.",
-    animOverridesCurrentTheme: "현재 테마",
-    animOverridesOpenThemeTab: "테마 탭 열기",
-    animOverridesOpenAssets: "assets 폴더 열기",
-    animOverridesResetAll: "모두 기본값으로 복원",
-    animOverridesChangeFile: "파일 변경",
-    animOverridesPreview: "한 번 미리보기",
-    animOverridesReset: "슬롯 초기화",
-    animOverridesFade: "페이드",
-    animOverridesFadeIn: "입장",
-    animOverridesFadeOut: "퇴장",
-    animOverridesSaveFade: "페이드 저장",
-    animOverridesDuration: "자동 복귀",
-    animOverridesSaveDuration: "타이밍 저장",
-    animOverridesContinuousHint: "지속 상태는 여기서 auto-return을 편집할 수 없습니다.",
-    animOverridesAssetCycle: "에셋 주기",
-    animOverridesSuggestedTiming: "권장 타이밍",
-    animOverridesTimingEstimated: "추정값",
-    animOverridesTimingFallback: "테마 기본값",
-    animOverridesTimingUnavailable: "사용할 수 없음",
-    animOverridesDisplayHintWarning: "displayHintMap이 런타임에 이 슬롯을 덮어쓸 수 있습니다.",
-    animOverridesFallbackHint: "이 슬롯은 현재 {state}(으)로 폴백됩니다.",
-    animOverridesOverriddenTooltip: "기본값에서 변경됨",
-    animOverridesUseOwnFile: "개별 파일 사용",
-    animOverridesDurationIdle: "유지 시간",
-    animOverridesSectionIdle: "Idle",
-    animOverridesSectionWork: "작업",
-    animOverridesSectionInterrupts: "인터럽트",
-    animOverridesSectionSleep: "수면",
-    animOverridesSectionMini: "Mini Mode",
-    animOverridesSectionIdleTracked: "커서 추적 idle",
-    animOverridesSectionIdleAnimated: "idle 랜덤 풀",
-    animOverridesSectionIdleStatic: "단일 정적 idle",
-    animOverridesSectionSleepFull: "전체 수면 시퀀스",
-    animOverridesSectionSleepDirect: "직접 수면",
-    animOverridesExpandRow: "펼치기",
-    animOverridesModalTitle: "에셋 파일 선택",
-    animOverridesModalSubtitle: "파일을 현재 테마의 assets 폴더에 추가한 뒤 여기서 목록을 새로고침하세요.",
-    animOverridesModalEmpty: "이 테마에는 아직 지원되는 에셋이 없습니다.",
-    animOverridesModalSelected: "선택된 파일",
-    animOverridesModalUse: "이 파일 사용",
-    animOverridesModalCancel: "취소",
-    animOverridesRefresh: "목록 새로고침",
-  },
 };
 
 let snapshot = null;
@@ -407,6 +309,29 @@ let animationOverridesData = null;
 let assetPickerState = null;
 let assetPickerPollTimer = null;
 const expandedOverrideRowIds = new Set();
+
+const AGENT_LAUNCHER_TRIGGERS_UI = [
+  { value: "menuOnly", labelKey: "triggerMenuOnly" },
+  { value: "tripleClick", labelKey: "triggerTripleClick" },
+  { value: "focusFallback", labelKey: "triggerFocusFallback" },
+  { value: "tripleAndFocus", labelKey: "triggerTripleAndFocus" },
+];
+
+function readAgentLauncherPrefs() {
+  const base = {
+    enabled: true,
+    command: "hermes",
+    cwd: "",
+    trigger: "focusFallback",
+  };
+  const al = snapshot && snapshot.agentLauncher;
+  return al && typeof al === "object" ? { ...base, ...al } : base;
+}
+
+function commitAgentLauncher(partial) {
+  const next = { ...readAgentLauncherPrefs(), ...partial };
+  return window.settingsAPI.update("agentLauncher", next);
+}
 
 function t(key) {
   const lang = (snapshot && snapshot.lang) || "en";
@@ -944,11 +869,6 @@ function formatSessionRange(minSessions, maxSessions) {
     if (maxSessions == null) return `${minSessions}+ 会话`;
     if (minSessions === maxSessions) return `${minSessions} 会话`;
     return `${minSessions}-${maxSessions} 会话`;
-  }
-  if (lang === "ko") {
-    if (maxSessions == null) return `${minSessions}+ 세션`;
-    if (minSessions === maxSessions) return `${minSessions} 세션`;
-    return `${minSessions}-${maxSessions} 세션`;
   }
   if (maxSessions == null) return `${minSessions}+ sessions`;
   if (minSessions === maxSessions) return `${minSessions} session${minSessions === 1 ? "" : "s"}`;
@@ -1669,11 +1589,141 @@ function renderAgentsTab(parent) {
     empty.className = "placeholder";
     empty.innerHTML = `<div class="placeholder-desc">${escapeHtml(t("agentsEmpty"))}</div>`;
     parent.appendChild(empty);
-    return;
+  } else {
+    const rows = agentMetadata.flatMap((agent) => buildAgentRows(agent));
+    parent.appendChild(buildSection("", rows));
   }
 
-  const rows = agentMetadata.flatMap((agent) => buildAgentRows(agent));
-  parent.appendChild(buildSection("", rows));
+  parent.appendChild(buildAgentLauncherSection());
+}
+
+function buildAgentLauncherSection() {
+  const section = document.createElement("section");
+  section.className = "section";
+  const heading = document.createElement("h2");
+  heading.className = "section-title";
+  heading.textContent = t("sectionAgentLauncher");
+  section.appendChild(heading);
+  const sub = document.createElement("p");
+  sub.className = "subtitle";
+  sub.textContent = t("agentLauncherSubtitle");
+  section.appendChild(sub);
+
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+  wrap.appendChild(buildAgentLauncherEnabledRow());
+  wrap.appendChild(buildAgentLauncherTextRow({
+    field: "command",
+    labelKey: "rowAgentLauncherCommand",
+    descKey: "rowAgentLauncherCommandDesc",
+  }));
+  wrap.appendChild(buildAgentLauncherTextRow({
+    field: "cwd",
+    labelKey: "rowAgentLauncherCwd",
+    descKey: "rowAgentLauncherCwdDesc",
+  }));
+  wrap.appendChild(buildAgentLauncherTriggerRow());
+  section.appendChild(wrap);
+  return section;
+}
+
+function buildAgentLauncherEnabledRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label"></span>` +
+      `<span class="row-desc"></span>` +
+    `</div>` +
+    `<div class="row-control"><div class="switch" role="switch" tabindex="0"></div></div>`;
+  row.querySelector(".row-label").textContent = t("rowAgentLauncherEnabled");
+  row.querySelector(".row-desc").textContent = t("rowAgentLauncherEnabledDesc");
+  const sw = row.querySelector(".switch");
+  const on = readAgentLauncherPrefs().enabled;
+  if (on) sw.classList.add("on");
+  sw.setAttribute("aria-checked", on ? "true" : "false");
+  attachActivation(sw, () =>
+    commitAgentLauncher({ enabled: !readAgentLauncherPrefs().enabled })
+  );
+  return row;
+}
+
+function buildAgentLauncherTextRow({ field, labelKey, descKey }) {
+  const row = document.createElement("div");
+  row.className = "row";
+  const text = document.createElement("div");
+  text.className = "row-text";
+  const label = document.createElement("span");
+  label.className = "row-label";
+  label.textContent = t(labelKey);
+  text.appendChild(label);
+  const desc = document.createElement("span");
+  desc.className = "row-desc";
+  desc.textContent = t(descKey);
+  text.appendChild(desc);
+  row.appendChild(text);
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "soft-input";
+  input.value = String(readAgentLauncherPrefs()[field] || "");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.style.minWidth = "220px";
+  input.style.flex = "1";
+  input.addEventListener("blur", () => {
+    const cur = readAgentLauncherPrefs();
+    const raw = input.value;
+    if (raw === String(cur[field] || "")) return;
+    Promise.resolve(commitAgentLauncher({ [field]: raw })).then((result) => {
+      if (!result || result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastSaveFailed") + msg, { error: true });
+        input.value = String(readAgentLauncherPrefs()[field] || "");
+      }
+    });
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildAgentLauncherTriggerRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  const text = document.createElement("div");
+  text.className = "row-text";
+  const label = document.createElement("span");
+  label.className = "row-label";
+  label.textContent = t("rowAgentLauncherTrigger");
+  text.appendChild(label);
+  row.appendChild(text);
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const sel = document.createElement("select");
+  sel.className = "soft-input";
+  const cur = readAgentLauncherPrefs().trigger;
+  for (const opt of AGENT_LAUNCHER_TRIGGERS_UI) {
+    const o = document.createElement("option");
+    o.value = opt.value;
+    o.textContent = t(opt.labelKey);
+    if (opt.value === cur) o.selected = true;
+    sel.appendChild(o);
+  }
+  sel.addEventListener("change", () => {
+    const v = sel.value;
+    Promise.resolve(commitAgentLauncher({ trigger: v })).then((result) => {
+      if (!result || result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastSaveFailed") + msg, { error: true });
+        sel.value = readAgentLauncherPrefs().trigger;
+      }
+    });
+  });
+  ctrl.appendChild(sel);
+  row.appendChild(ctrl);
+  return row;
 }
 
 function buildAgentRows(agent) {
@@ -1984,7 +2034,6 @@ function buildLanguageRow() {
         `<div class="segmented" role="tablist">` +
           `<button data-lang="en"></button>` +
           `<button data-lang="zh"></button>` +
-          `<button data-lang="ko"></button>` +
         `</div>` +
       `</div>`;
   row.querySelector(".row-label").textContent = t("rowLanguage");
@@ -1992,7 +2041,6 @@ function buildLanguageRow() {
   const buttons = row.querySelectorAll(".segmented button");
   buttons[0].textContent = t("langEnglish");
   buttons[1].textContent = t("langChinese");
-  buttons[2].textContent = t("langKorean");
   const current = (snapshot && snapshot.lang) || "en";
   for (const btn of buttons) {
     if (btn.dataset.lang === current) btn.classList.add("active");

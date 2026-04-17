@@ -6,8 +6,8 @@ const assert = require("node:assert");
 const { i18n, SUPPORTED_LANGS } = require("../src/i18n");
 
 describe("i18n locales", () => {
-  it("lists Korean in supported languages", () => {
-    assert.deepStrictEqual(SUPPORTED_LANGS, ["en", "zh", "ko"]);
+  it("lists English and Chinese in supported languages", () => {
+    assert.deepStrictEqual(SUPPORTED_LANGS, ["en", "zh"]);
   });
 
   it("keeps all locale keysets aligned with English", () => {

@@ -43,7 +43,7 @@ const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "
 
 const STATE_PRIORITY = {
   error: 8, notification: 7, sweeping: 6, attention: 5,
-  carrying: 4, juggling: 4, working: 3, thinking: 2, idle: 1, sleeping: 0,
+  carrying: 4, juggling: 4, working: 3, typing: 3, thinking: 2, idle: 1, sleeping: 0,
 };
 
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
@@ -163,6 +163,9 @@ function refreshTheme() {
 }
 
 refreshTheme();
+
+/** When true, applyState() skips oneshot-disable, mini-transition, and mini-mode remap (study supervisor). */
+let supervisorForce = false;
 
 function setState(newState, svgOverride) {
   if (ctx.doNotDisturb) return;
@@ -285,7 +288,7 @@ function applyState(state, svgOverride) {
   //   · pending queued oneshot (state.js:163)
   // and also runs before the mini-mode remap below, so "disable notification"
   // silences both normal and mini visuals consistently.
-  if (isOneshotDisabled(state)) {
+  if (!supervisorForce && isOneshotDisabled(state)) {
     const resolved = resolveDisplayState();
     if (resolved !== state) {
       setState(resolved, getSvgOverride(resolved));
@@ -293,11 +296,11 @@ function applyState(state, svgOverride) {
     return;
   }
 
-  if (ctx.miniTransitioning && !state.startsWith("mini-")) {
+  if (!supervisorForce && ctx.miniTransitioning && !state.startsWith("mini-")) {
     return;
   }
 
-  if (ctx.miniMode && !state.startsWith("mini-")) {
+  if (!supervisorForce && ctx.miniMode && !state.startsWith("mini-")) {
     if (state === "notification") return applyState("mini-alert");
     if (state === "attention") return applyState("mini-happy");
     if (state === "working" || state === "thinking" || state === "juggling") {
@@ -398,6 +401,49 @@ function applyState(state, svgOverride) {
       }
     }, AUTO_RETURN_MS[state]);
   }
+}
+
+/**
+ * POST /supervisor — force visible state immediately: clears minDisplay queue,
+ * clears pending auto-return, replaces sessions with one study-supervisor session
+ * so hook session priority does not override until the next agent event.
+ */
+function applySupervisorState(state, svgOverride) {
+  if (!STATE_SVGS[state]) return false;
+  if (pendingTimer) {
+    clearTimeout(pendingTimer);
+    pendingTimer = null;
+    pendingState = null;
+  }
+  if (autoReturnTimer) {
+    clearTimeout(autoReturnTimer);
+    autoReturnTimer = null;
+  }
+  sessions.clear();
+  sessions.set("study-supervisor", {
+    state,
+    updatedAt: Date.now(),
+    displayHint: null,
+    sourcePid: null,
+    cwd: "",
+    editor: null,
+    pidChain: null,
+    agentPid: null,
+    agentId: "study-supervisor",
+    host: null,
+    headless: false,
+    pidReachable: false,
+    resumeState: null,
+  });
+  const resolved = resolveDisplayState();
+  const svg = svgOverride != null ? svgOverride : getSvgOverride(resolved);
+  supervisorForce = true;
+  try {
+    applyState(resolved, svg);
+  } finally {
+    supervisorForce = false;
+  }
+  return true;
 }
 
 // ── Wake poll ──
@@ -961,7 +1007,7 @@ function cleanup() {
 }
 
 return {
-  setState, applyState, updateSession, resolveDisplayState, resolveVisualBinding, setUpdateVisualState,
+  setState, applyState, applySupervisorState, updateSession, resolveDisplayState, resolveVisualBinding, setUpdateVisualState,
   enableDoNotDisturb, disableDoNotDisturb,
   startStaleCleanup, stopStaleCleanup, startWakePoll, stopWakePoll,
   getSvgOverride, cleanStaleSessions, startStartupRecovery, refreshTheme,

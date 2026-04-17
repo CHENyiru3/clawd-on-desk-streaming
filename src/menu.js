@@ -154,6 +154,12 @@ module.exports = function initMenu(ctx) {
         checked: ctx.showSessionId,
         click: (menuItem) => { ctx.showSessionId = menuItem.checked; },
       },
+      ...(ctx.isAgentLauncherEnabled && ctx.isAgentLauncherEnabled()
+        ? [
+            { type: "separator" },
+            { label: t("openCLIAgent"), click: () => ctx.openAgentCli && ctx.openAgentCli() },
+          ]
+        : []),
       { type: "separator" },
       {
         label: t("theme"),
@@ -214,7 +220,6 @@ module.exports = function initMenu(ctx) {
         submenu: [
           { label: "English", type: "radio", checked: ctx.lang === "en", click: () => { ctx.lang = "en"; } },
           { label: "中文", type: "radio", checked: ctx.lang === "zh", click: () => { ctx.lang = "zh"; } },
-          { label: "한국어", type: "radio", checked: ctx.lang === "ko", click: () => { ctx.lang = "ko"; } },
         ],
       },
       { type: "separator" },
@@ -453,6 +458,12 @@ module.exports = function initMenu(ctx) {
         label: `${t("sessions")} (${ctx.sessions.size})`,
         submenu: ctx.buildSessionSubmenu(),
       },
+      ...(ctx.isAgentLauncherEnabled && ctx.isAgentLauncherEnabled()
+        ? [
+            { type: "separator" },
+            { label: t("openCLIAgent"), click: () => ctx.openAgentCli && ctx.openAgentCli() },
+          ]
+        : []),
       { type: "separator" },
       {
         label: t("theme"),

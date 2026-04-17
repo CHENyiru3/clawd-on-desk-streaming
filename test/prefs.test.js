@@ -29,6 +29,7 @@ describe("prefs.getDefaults", () => {
     assert.notStrictEqual(a, b);
     assert.notStrictEqual(a.agents, b.agents);
     assert.notStrictEqual(a.themeOverrides, b.themeOverrides);
+    assert.notStrictEqual(a.agentLauncher, b.agentLauncher);
     // Mutating one shouldn't affect the other
     a.agents["claude-code"].enabled = false;
     assert.strictEqual(b.agents["claude-code"].enabled, true);
@@ -62,6 +63,14 @@ describe("prefs.getDefaults", () => {
       );
     }
   });
+
+  it("seeds agentLauncher with hermes CLI as default command", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(d.agentLauncher.enabled, true);
+    assert.strictEqual(d.agentLauncher.command, "hermes");
+    assert.strictEqual(d.agentLauncher.cwd, "");
+    assert.strictEqual(d.agentLauncher.trigger, "focusFallback");
+  });
 });
 
 describe("prefs.validate", () => {
@@ -83,7 +92,7 @@ describe("prefs.validate", () => {
 
   it("keeps valid fields verbatim", () => {
     const v = prefs.validate({
-      lang: "ko",
+      lang: "zh",
       soundMuted: true,
       bubbleFollowPet: true,
       x: 100,
@@ -92,7 +101,7 @@ describe("prefs.validate", () => {
       miniEdge: "left",
       theme: "calico",
     });
-    assert.strictEqual(v.lang, "ko");
+    assert.strictEqual(v.lang, "zh");
     assert.strictEqual(v.soundMuted, true);
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.x, 100);
@@ -183,6 +192,47 @@ describe("prefs.validate", () => {
     assert.deepStrictEqual(v.themeVariant, {});
     const w = prefs.validate({ themeVariant: [1, 2] });
     assert.deepStrictEqual(w.themeVariant, {});
+  });
+
+  it("normalizes agentLauncher: drops bad command and invalid trigger", () => {
+    const v = prefs.validate({
+      agentLauncher: {
+        enabled: true,
+        command: "claude\nrm",
+        cwd: "/tmp",
+        trigger: "bogus",
+      },
+    });
+    const d = prefs.getDefaults();
+    assert.strictEqual(v.agentLauncher.enabled, true);
+    assert.strictEqual(v.agentLauncher.command, d.agentLauncher.command);
+    assert.strictEqual(v.agentLauncher.cwd, "/tmp");
+    assert.strictEqual(v.agentLauncher.trigger, d.agentLauncher.trigger);
+  });
+
+  it("normalizes agentLauncher: keeps valid custom command", () => {
+    const v = prefs.validate({
+      agentLauncher: {
+        enabled: true,
+        command: "/usr/local/bin/claude",
+        cwd: "",
+        trigger: "tripleAndFocus",
+      },
+    });
+    assert.strictEqual(v.agentLauncher.command, "/usr/local/bin/claude");
+    assert.strictEqual(v.agentLauncher.trigger, "tripleAndFocus");
+  });
+
+  it("normalizes agentLauncher: strips cwd containing ..", () => {
+    const v = prefs.validate({
+      agentLauncher: {
+        enabled: true,
+        command: "claude",
+        cwd: "/tmp/../etc",
+        trigger: "menuOnly",
+      },
+    });
+    assert.strictEqual(v.agentLauncher.cwd, "");
   });
 });
 

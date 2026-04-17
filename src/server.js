@@ -312,6 +312,56 @@ function startHttpServer() {
           res.end("bad json");
         }
       });
+    } else if (req.method === "POST" && req.url === "/supervisor") {
+      let body = "";
+      let bodySize = 0;
+      let tooLarge = false;
+      req.on("data", (chunk) => {
+        if (tooLarge) return;
+        bodySize += chunk.length;
+        if (bodySize > 1024) { tooLarge = true; return; }
+        body += chunk;
+      });
+      req.on("end", () => {
+        if (tooLarge) {
+          res.writeHead(413);
+          res.end("supervisor payload too large");
+          return;
+        }
+        try {
+          const data = JSON.parse(body);
+          const state = typeof data.state === "string" ? data.state : "";
+          if (!state || !ctx.STATE_SVGS[state]) {
+            res.writeHead(400);
+            res.end("unknown state");
+            return;
+          }
+          if (state.startsWith("mini-")) {
+            res.writeHead(400);
+            res.end("mini states not supported on /supervisor");
+            return;
+          }
+          if (typeof ctx.applySupervisorState !== "function") {
+            res.writeHead(500);
+            res.end("supervisor not available");
+            return;
+          }
+          const ok = ctx.applySupervisorState(state);
+          if (!ok) {
+            res.writeHead(500);
+            res.end("supervisor apply failed");
+            return;
+          }
+          res.writeHead(200, {
+            "Content-Type": "application/json",
+            [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID,
+          });
+          res.end(JSON.stringify({ ok: true, state }));
+        } catch {
+          res.writeHead(400);
+          res.end("bad json");
+        }
+      });
     } else if (req.method === "POST" && req.url === "/permission") {
       ctx.permLog(`/permission hit | DND=${ctx.doNotDisturb} pending=${ctx.pendingPermissions.length}`);
       let body = "";

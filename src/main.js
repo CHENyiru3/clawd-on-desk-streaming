@@ -147,6 +147,36 @@ const _settingsController = createSettingsController({
 // assign directly.
 let lang = _settingsController.get("lang");
 
+const {
+  launchAgentTerminal,
+  shouldFocusFallbackLaunch,
+  shouldTripleClickLaunch,
+} = require("./agent-launcher");
+
+function tryOpenAgentCli() {
+  const snap = _settingsController.getSnapshot();
+  const al = snap && snap.agentLauncher;
+  if (!al || !al.enabled) return;
+  const r = launchAgentTerminal({
+    command: al.command,
+    cwd: al.cwd,
+  });
+  if (!r.ok) console.warn("Clawd: agent launcher:", r.message);
+}
+
+function maybeLaunchAgentOnEmptyFocus() {
+  const snap = _settingsController.getSnapshot();
+  const al = snap && snap.agentLauncher;
+  if (!al || !al.enabled) return false;
+  if (!shouldFocusFallbackLaunch(al.trigger)) return false;
+  const r = launchAgentTerminal({
+    command: al.command,
+    cwd: al.cwd,
+  });
+  if (!r.ok) console.warn("Clawd: agent launcher (focus fallback):", r.message);
+  return !!r.ok;
+}
+
 // First-run import of system-backed settings into prefs. The actual truth for
 // `openAtLogin` lives in OS login items / autostart files; if we just trusted
 // the schema default (false), an upgrading user with login-startup already
@@ -360,12 +390,23 @@ function sendToHitWin(channel, ...args) {
   if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
 }
 
+function pushAgentLauncherToHit() {
+  const snap = _settingsController.getSnapshot();
+  const al = snap && snap.agentLauncher;
+  const triple = !!(al && al.enabled && shouldTripleClickLaunch(al.trigger));
+  sendToHitWin("hit-state-sync", { agentLauncherTriple: triple });
+}
+
 function syncHitStateAfterLoad() {
+  const snap = _settingsController.getSnapshot();
+  const al = snap && snap.agentLauncher;
+  const triple = !!(al && al.enabled && shouldTripleClickLaunch(al.trigger));
   sendToHitWin("hit-state-sync", {
     currentSvg: _state.getCurrentSvg(),
     currentState: _state.getCurrentState(),
     miniMode: _mini.getMiniMode(),
     dndEnabled: doNotDisturb,
+    agentLauncherTriple: triple,
   });
 }
 
@@ -688,6 +729,7 @@ const _serverCtx = {
   isAgentEnabled: (agentId) => _isAgentEnabled({ agents: _settingsController.get("agents") }, agentId),
   isAgentPermissionsEnabled: (agentId) => _isAgentPermissionsEnabled({ agents: _settingsController.get("agents") }, agentId),
   setState,
+  applySupervisorState: (state, svg) => _state.applySupervisorState(state, svg),
   updateSession,
   resolvePermissionEntry,
   sendPermissionResponse,
@@ -855,6 +897,12 @@ const _menuCtx = {
   getActiveThemeCapabilities: () => activeTheme ? activeTheme._capabilities : null,
   ensureUserThemesDir: () => themeLoader.ensureUserThemesDir(),
   openSettingsWindow: () => openSettingsWindow(),
+  openAgentCli: () => tryOpenAgentCli(),
+  isAgentLauncherEnabled: () => {
+    const snap = _settingsController.getSnapshot();
+    const al = snap && snap.agentLauncher;
+    return !!(al && al.enabled);
+  },
 };
 const _menu = require("./menu")(_menuCtx);
 const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
@@ -872,6 +920,7 @@ const { t, buildContextMenu, buildTrayMenu, rebuildAllMenus, createTray,
 const MENU_AFFECTING_KEYS = new Set([
   "lang", "soundMuted", "bubbleFollowPet", "hideBubbles", "showSessionId",
   "manageClaudeHooksAutomatically", "autoStartWithClaude", "openAtLogin", "showTray", "showDock", "theme", "size",
+  "agentLauncher",
 ]);
 function wireSettingsSubscribers() {
   _settingsController.subscribe(({ changes }) => {
@@ -908,6 +957,12 @@ function wireSettingsSubscribers() {
     if ("hideBubbles" in changes) hideBubbles = changes.hideBubbles;
     if ("showSessionId" in changes) showSessionId = changes.showSessionId;
     if ("soundMuted" in changes) soundMuted = changes.soundMuted;
+
+    if ("agentLauncher" in changes) {
+      try { pushAgentLauncherToHit(); } catch (err) {
+        console.warn("Clawd: pushAgentLauncherToHit failed:", err && err.message);
+      }
+    }
 
     // 2. Reactive side effects (mirror what the legacy setters / click handlers used to do).
     if ("hideBubbles" in changes) {
@@ -1450,12 +1505,6 @@ const REMOVE_THEME_DIALOG_STRINGS = {
     message: (name) => `确认删除主题 "${name}"？`,
     detail: "此操作不可撤销。主题的所有文件将从磁盘移除。",
   },
-  ko: {
-    delete: "삭제",
-    cancel: "취소",
-    message: (name) => `테마 "${name}"을(를) 삭제할까요?`,
-    detail: "이 작업은 되돌릴 수 없습니다. 이 테마의 모든 파일이 디스크에서 제거됩니다.",
-  },
 };
 ipcMain.handle("settings:confirm-remove-theme", async (event, themeId) => {
   if (typeof themeId !== "string" || !themeId) return { confirmed: false };
@@ -1500,16 +1549,6 @@ const CLAUDE_HOOKS_DIALOG_STRINGS = {
     disconnectTitle: "断开 Claude hooks？",
     disconnectDetail: "这会从 `~/.claude/settings.json` 移除 Clawd 管理的 Claude hooks，并关闭自动管理。`随 Claude Code 启动` 的偏好会保留，方便以后重新启用。",
     disconnect: "断开 hooks",
-  },
-  ko: {
-    disableTitle: "Claude hooks 자동 관리를 끌까요?",
-    disableDetail: "지금 제거하지 않으면 `~/.claude/settings.json`에 설치된 Claude hooks는 그대로 유지됩니다.",
-    disableOnly: "자동 관리만 끄기",
-    disableAndRemove: "끄고 설치된 hooks 제거",
-    cancel: "취소",
-    disconnectTitle: "Claude hooks 연결을 해제할까요?",
-    disconnectDetail: "`~/.claude/settings.json`에서 Clawd가 관리하는 Claude hooks를 제거하고 자동 관리를 끕니다. `Claude Code와 함께 시작` 설정은 나중에 다시 켤 수 있도록 유지됩니다.",
-    disconnect: "hooks 연결 해제",
   },
 };
 function _getSettingsDialogParent(event) {
@@ -1905,6 +1944,11 @@ function createWindow() {
       }
     }
     if (best) focusTerminalWindow(best.sourcePid, best.cwd, best.editor, best.pidChain);
+    else maybeLaunchAgentOnEmptyFocus();
+  });
+
+  ipcMain.on("open-agent-cli", () => {
+    tryOpenAgentCli();
   });
 
   ipcMain.on("show-session-menu", () => {

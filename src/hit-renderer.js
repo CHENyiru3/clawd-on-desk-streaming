@@ -21,6 +21,7 @@ let currentSvg = null;
 let currentState = null;
 let miniMode = false;
 let dndEnabled = false;
+let agentLauncherTriple = false;
 
 window.hitAPI.onStateSync((data) => {
   if (data.currentSvg !== undefined) currentSvg = data.currentSvg;
@@ -30,6 +31,7 @@ window.hitAPI.onStateSync((data) => {
     area.style.cursor = miniMode ? "default" : "";
   }
   if (data.dndEnabled !== undefined) dndEnabled = data.dndEnabled;
+  if (data.agentLauncherTriple !== undefined) agentLauncherTriple = data.agentLauncherTriple;
 });
 
 // --- Drag state ---
@@ -156,6 +158,16 @@ function handleClick(clientX) {
   }
 
   clickCount++;
+  if (clickCount === 3 && agentLauncherTriple && currentState === "idle") {
+    if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }
+    clickCount = 0;
+    firstClickDir = null;
+    if (typeof window.hitAPI.openAgentCli === "function") {
+      window.hitAPI.openAgentCli();
+    }
+    return;
+  }
+
   if (clickCount === 1) {
     firstClickDir = clientX < area.offsetWidth / 2 ? "left" : "right";
     window.hitAPI.focusTerminal();

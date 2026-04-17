@@ -48,7 +48,7 @@ const SCHEMA = {
   preMiniX: { type: "number", default: 0, validate: (v) => Number.isFinite(v) },
   preMiniY: { type: "number", default: 0, validate: (v) => Number.isFinite(v) },
   // Pure data prefs
-  lang: { type: "string", default: "en", enum: ["en", "zh", "ko"] },
+  lang: { type: "string", default: "en", enum: ["en", "zh"] },
   showTray: { type: "boolean", default: true },
   showDock: { type: "boolean", default: true },
   manageClaudeHooksAutomatically: { type: "boolean", default: true },
@@ -93,6 +93,17 @@ const SCHEMA = {
     type: "object",
     defaultFactory: () => ({}),
     normalize: normalizeThemeVariant,
+  },
+  // Optional: spawn the system terminal with a CLI agent command (tray / pet gesture / focus fallback).
+  agentLauncher: {
+    type: "object",
+    defaultFactory: () => ({
+      enabled: true,
+      command: "hermes",
+      cwd: "",
+      trigger: "focusFallback",
+    }),
+    normalize: normalizeAgentLauncher,
   },
 };
 
@@ -174,6 +185,49 @@ function migrate(raw) {
 }
 
 const AGENT_FLAGS = ["enabled", "permissionsEnabled"];
+
+const AGENT_LAUNCHER_TRIGGER_LIST = Object.freeze([
+  "menuOnly",
+  "tripleClick",
+  "focusFallback",
+  "tripleAndFocus",
+]);
+const AGENT_LAUNCHER_TRIGGERS = new Set(AGENT_LAUNCHER_TRIGGER_LIST);
+const AGENT_LAUNCHER_COMMAND_MAX = 256;
+const AGENT_LAUNCHER_CWD_MAX = 4096;
+
+/** Single-line command/path token — no shell metacharacters (prefs are untrusted). */
+function sanitizeAgentLauncherCommand(raw) {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s || s.length > AGENT_LAUNCHER_COMMAND_MAX) return null;
+  if (/[\n\r\x00-\x1f;|&`$<>]/.test(s)) return null;
+  return s;
+}
+
+function sanitizeAgentLauncherCwd(raw) {
+  if (typeof raw !== "string") return "";
+  const s = raw.trim();
+  if (!s) return "";
+  if (s.length > AGENT_LAUNCHER_CWD_MAX) return "";
+  if (/[\n\r\x00-\x1f]/.test(s)) return "";
+  if (/\.\./.test(s)) return "";
+  return s;
+}
+
+function normalizeAgentLauncher(value, defaultsValue) {
+  const d = defaultsValue || SCHEMA.agentLauncher.defaultFactory();
+  if (!value || typeof value !== "object") return { ...d };
+  const out = { ...d };
+  if (typeof value.enabled === "boolean") out.enabled = value.enabled;
+  const cmd = sanitizeAgentLauncherCommand(value.command);
+  if (cmd != null) out.command = cmd;
+  out.cwd = sanitizeAgentLauncherCwd(value.cwd);
+  if (typeof value.trigger === "string" && AGENT_LAUNCHER_TRIGGERS.has(value.trigger)) {
+    out.trigger = value.trigger;
+  }
+  return out;
+}
 
 function normalizeAgents(value, defaultsValue) {
   if (!value || typeof value !== "object") return defaultsValue;
@@ -365,6 +419,7 @@ module.exports = {
   SCHEMA,
   SCHEMA_KEYS,
   AGENT_FLAGS,
+  AGENT_LAUNCHER_TRIGGER_LIST,
   getDefaults,
   validate,
   migrate,
