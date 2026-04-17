@@ -75,6 +75,8 @@ const VISUAL_FALLBACK_STATES = new Set([
   "sweeping",
   "carrying",
   "sleeping",
+  "reading",
+  "listening",
 ]);
 
 // ── Variant support (Phase 3b-swap) ──

@@ -73,6 +73,20 @@ const SCHEMA = {
   macTypingAwarenessEnabled: { type: "boolean", default: process.platform === "darwin" },
   macTypingPermissionPrompted: { type: "boolean", default: false },
   macTypingPermissionDismissed: { type: "boolean", default: false },
+  globalActivityEnabled: { type: "boolean", default: process.platform === "darwin" },
+  globalActivityRules: {
+    type: "object",
+    defaultFactory: () => ({
+      frontmostAppReaction: process.platform === "darwin",
+      clipboardReaction: process.platform === "darwin",
+      notificationReaction: process.platform === "darwin",
+      presenceWake: process.platform === "darwin",
+      mediaPlaybackReaction: process.platform === "darwin",
+      browserReadingReaction: process.platform === "darwin",
+    }),
+    normalize: normalizeGlobalActivityRules,
+  },
+  globalActivityOnboardingShown: { type: "boolean", default: false },
   // Theme
   theme: { type: "string", default: "clawd" },
   // Phase 2/3 placeholders — schema reserves the keys so future migrations don't need v2.
@@ -237,6 +251,25 @@ function normalizeAgentLauncher(value, defaultsValue) {
   out.cwd = sanitizeAgentLauncherCwd(value.cwd);
   if (typeof value.trigger === "string" && AGENT_LAUNCHER_TRIGGERS.has(value.trigger)) {
     out.trigger = value.trigger;
+  }
+  return out;
+}
+
+const GLOBAL_ACTIVITY_RULE_KEYS = Object.freeze([
+  "frontmostAppReaction",
+  "clipboardReaction",
+  "notificationReaction",
+  "presenceWake",
+  "mediaPlaybackReaction",
+  "browserReadingReaction",
+]);
+
+function normalizeGlobalActivityRules(value, defaultsValue) {
+  const defaults = defaultsValue || SCHEMA.globalActivityRules.defaultFactory();
+  const out = { ...defaults };
+  if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+  for (const key of GLOBAL_ACTIVITY_RULE_KEYS) {
+    if (typeof value[key] === "boolean") out[key] = value[key];
   }
   return out;
 }

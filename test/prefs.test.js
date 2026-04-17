@@ -53,6 +53,23 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.macTypingPermissionDismissed, false);
   });
 
+  it("seeds global activity prefs", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(typeof d.globalActivityEnabled, "boolean");
+    assert.strictEqual(d.globalActivityOnboardingShown, false);
+    assert.deepStrictEqual(
+      Object.keys(d.globalActivityRules).sort(),
+      [
+        "browserReadingReaction",
+        "clipboardReaction",
+        "frontmostAppReaction",
+        "mediaPlaybackReaction",
+        "notificationReaction",
+        "presenceWake",
+      ]
+    );
+  });
+
   it("seeds MiniMax translation prefs", () => {
     const d = prefs.getDefaults();
     assert.strictEqual(d.translateProvider, "minimax");
@@ -95,6 +112,7 @@ describe("prefs.validate", () => {
       bubbleFollowPet: true, // ok
       hideBubbles: 0,        // wrong type
       macTypingAwarenessEnabled: "yes",
+      globalActivityEnabled: "yes",
       translateProvider: "googletrans",
       translateApiKey: 42,
     });
@@ -105,6 +123,7 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.hideBubbles, false);
     assert.strictEqual(typeof v.macTypingAwarenessEnabled, "boolean");
+    assert.strictEqual(typeof v.globalActivityEnabled, "boolean");
     assert.strictEqual(v.translateProvider, "minimax");
     assert.strictEqual(v.translateApiKey, "");
   });
@@ -137,6 +156,19 @@ describe("prefs.validate", () => {
     });
     assert.strictEqual(v.translateProvider, "minimax");
     assert.strictEqual(v.translateApiKey, "secret-key");
+  });
+
+  it("normalizes globalActivityRules and drops malformed entries", () => {
+    const v = prefs.validate({
+      globalActivityRules: {
+        frontmostAppReaction: false,
+        clipboardReaction: true,
+        notificationReaction: "yes",
+      },
+    });
+    assert.strictEqual(v.globalActivityRules.frontmostAppReaction, false);
+    assert.strictEqual(v.globalActivityRules.clipboardReaction, true);
+    assert.strictEqual(typeof v.globalActivityRules.notificationReaction, "boolean");
   });
 
   it("normalizes agents (drops malformed entries)", () => {

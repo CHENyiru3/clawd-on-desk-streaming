@@ -44,7 +44,7 @@ const DEEP_SLEEP_STATES = new Set(["collapsing", "sleeping"]);
 
 const STATE_PRIORITY = {
   error: 9, notification: 8, sweeping: 7, attention: 6,
-  carrying: 5, juggling: 5, working: 4, typing: 4, thinking: 3, composing: 2, idle: 1, sleeping: 0,
+  carrying: 5, juggling: 5, working: 4, typing: 4, thinking: 3, composing: 2.5, reading: 2, listening: 2, idle: 1, sleeping: 0,
 };
 
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
@@ -79,6 +79,8 @@ let eyeResendTimer = null;
 let updateVisualState = null;
 let updateVisualSvgOverride = null;
 let composingActive = false;
+let globalRuleState = null;
+let globalPresenceActive = false;
 
 const UPDATE_VISUAL_STATE_MAP = {
   checking: "sweeping",
@@ -840,6 +842,14 @@ function resolveDisplayState() {
   ) {
     return "composing";
   }
+  if (
+    globalRuleState
+    && !ctx.doNotDisturb
+    && !DEEP_SLEEP_STATES.has(currentState)
+    && (STATE_PRIORITY[best] || 0) <= (STATE_PRIORITY.idle || 0)
+  ) {
+    return globalRuleState;
+  }
   return best;
 }
 
@@ -868,6 +878,27 @@ function setComposingActive(active) {
     setState(resolved, getSvgOverride(resolved));
   }
   return composingActive;
+}
+
+function setGlobalRuleState(state) {
+  const nextState = state || null;
+  if (nextState === globalRuleState) return globalRuleState;
+  globalRuleState = nextState;
+
+  if (ctx.doNotDisturb || DEEP_SLEEP_STATES.has(currentState)) {
+    return globalRuleState;
+  }
+
+  const resolved = resolveDisplayState();
+  if (resolved !== currentState || nextState || currentState === "reading" || currentState === "listening") {
+    setState(resolved, getSvgOverride(resolved));
+  }
+  return globalRuleState;
+}
+
+function setGlobalPresenceActive(active) {
+  globalPresenceActive = active === true;
+  return globalPresenceActive;
 }
 
 function getActiveWorkingCount() {
@@ -916,6 +947,17 @@ function getSvgOverride(state) {
     }
     const thinkingSvg = resolveVisualBinding("thinking");
     return thinkingSvg || SVG_IDLE_FOLLOW;
+  }
+  if (state === "reading") {
+    const readingSvg = resolveVisualBinding("reading");
+    return readingSvg || SVG_IDLE_FOLLOW;
+  }
+  if (state === "listening") {
+    if (hasOwnVisualFiles("listening")) {
+      const listeningSvg = resolveVisualBinding("listening");
+      if (listeningSvg) return listeningSvg;
+    }
+    return STATE_SVGS.thinking[0] || SVG_IDLE_FOLLOW;
   }
   if (state === "working") {
     const hinted = getWinningSessionDisplayHint("working");
@@ -1083,6 +1125,10 @@ return {
   clearSessionsByAgent,
   getCurrentState, getCurrentSvg, getCurrentHitBox, getStartupRecoveryActive,
   getComposingActive: () => composingActive,
+  getGlobalRuleState: () => globalRuleState,
+  getGlobalPresenceActive: () => globalPresenceActive,
+  setGlobalRuleState,
+  setGlobalPresenceActive,
   sessions, STATE_PRIORITY, ONESHOT_STATES, SLEEP_SEQUENCE,
   get STATE_SVGS() { return STATE_SVGS; },
   get HIT_BOXES() { return HIT_BOXES; },

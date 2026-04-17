@@ -80,6 +80,7 @@ describe("updateRegistry pure-data validators", () => {
       "soundMuted", "bubbleFollowPet", "hideBubbles",
       "showSessionId", "miniMode", "openAtLoginHydrated",
       "macTypingAwarenessEnabled", "macTypingPermissionPrompted", "macTypingPermissionDismissed",
+      "globalActivityEnabled", "globalActivityOnboardingShown",
     ]) {
       assert.strictEqual(updateRegistry[key](true, deps).status, "ok", `${key}(true)`);
       assert.strictEqual(updateRegistry[key](false, deps).status, "ok", `${key}(false)`);
@@ -94,6 +95,22 @@ describe("updateRegistry pure-data validators", () => {
     assert.strictEqual(updateRegistry.translateApiKey("", deps).status, "ok");
     assert.strictEqual(updateRegistry.translateApiKey("secret", deps).status, "ok");
     assert.strictEqual(updateRegistry.translateApiKey(123, deps).status, "error");
+  });
+
+  it("globalActivityRules requires a complete boolean map", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.globalActivityRules({
+      frontmostAppReaction: true,
+      clipboardReaction: true,
+      notificationReaction: true,
+      presenceWake: true,
+      mediaPlaybackReaction: true,
+      browserReadingReaction: true,
+    }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.globalActivityRules({
+      frontmostAppReaction: true,
+    }, deps).status, "error");
+    assert.strictEqual(updateRegistry.globalActivityRules("nope", deps).status, "error");
   });
 
   it("object-form boolean fields validate via entry.validate", () => {

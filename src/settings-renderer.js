@@ -29,6 +29,7 @@ const STRINGS = {
     sectionAppearance: "Appearance",
     sectionTranslation: "Translation",
     sectionDiagnostics: "Diagnostics",
+    sectionGlobalActivity: "Global Activity",
     sectionStartup: "Startup",
     sectionBubbles: "Bubbles",
     agentsTitle: "Agents",
@@ -105,6 +106,28 @@ const STRINGS = {
     rowMacTypingStatusUnavailable: "Permission status unavailable on this system.",
     rowMacTypingStatusError: "Permission check failed. Try reopening System Settings.",
     actionOpenMacTypingPrivacy: "Open Settings",
+    rowGlobalActivity: "Enable global activity (macOS)",
+    rowGlobalActivityDesc: "Let Clawd react to app switches, clipboard activity, reading, and media beyond agent sessions.",
+    rowGlobalActivityUnsupported: "This feature is only available on macOS.",
+    rowGlobalActivityStatus: "Global activity status",
+    rowGlobalActivityStatusIdle: "No global rule active.",
+    rowGlobalActivityStatusActive: "Active rule: {rule}",
+    rowGlobalActivityLastErrorNone: "No recent collector errors.",
+    rowGlobalRuleFrontmost: "App switch reaction",
+    rowGlobalRuleClipboard: "Clipboard reaction",
+    rowGlobalRuleNotification: "Notification reaction",
+    rowGlobalRulePresence: "Presence wake",
+    rowGlobalRuleMedia: "Media playback reaction",
+    rowGlobalRuleBrowser: "Browser reading reaction",
+    rowGlobalCollectorFrontmost: "Frontmost app",
+    rowGlobalCollectorClipboard: "Clipboard",
+    rowGlobalCollectorNotification: "Notifications",
+    rowGlobalCollectorMedia: "Media",
+    rowGlobalCollectorBrowser: "Browser",
+    actionTestGlobalFrontmost: "Test App Switch",
+    actionTestGlobalClipboard: "Test Clipboard",
+    actionTestGlobalReading: "Test Reading",
+    actionTestGlobalListening: "Test Listening",
     placeholderTitle: "Coming soon",
     placeholderDesc: "This panel will land in a future Clawd release. The plan lives in docs/plan-settings-panel.md.",
     toastSaveFailed: "Couldn't save: ",
@@ -201,6 +224,7 @@ const STRINGS = {
     sectionAppearance: "外观",
     sectionTranslation: "翻译",
     sectionDiagnostics: "诊断",
+    sectionGlobalActivity: "全局活动",
     sectionStartup: "启动",
     sectionBubbles: "气泡",
     agentsTitle: "Agent 管理",
@@ -276,6 +300,28 @@ const STRINGS = {
     rowMacTypingStatusUnavailable: "当前系统无法读取权限状态。",
     rowMacTypingStatusError: "权限检查失败，请尝试重新打开系统设置。",
     actionOpenMacTypingPrivacy: "打开设置",
+    rowGlobalActivity: "启用全局活动（macOS）",
+    rowGlobalActivityDesc: "让 Clawd 能对应用切换、剪贴板、阅读和媒体播放等通用桌面行为作出反应，而不只是在 agent 会话中活动。",
+    rowGlobalActivityUnsupported: "该功能目前仅在 macOS 上可用。",
+    rowGlobalActivityStatus: "全局活动状态",
+    rowGlobalActivityStatusIdle: "当前没有激活的全局规则。",
+    rowGlobalActivityStatusActive: "当前规则：{rule}",
+    rowGlobalActivityLastErrorNone: "最近没有采集器错误。",
+    rowGlobalRuleFrontmost: "应用切换反应",
+    rowGlobalRuleClipboard: "剪贴板反应",
+    rowGlobalRuleNotification: "通知反应",
+    rowGlobalRulePresence: "存在感唤醒",
+    rowGlobalRuleMedia: "媒体播放反应",
+    rowGlobalRuleBrowser: "浏览器阅读反应",
+    rowGlobalCollectorFrontmost: "前台应用",
+    rowGlobalCollectorClipboard: "剪贴板",
+    rowGlobalCollectorNotification: "通知",
+    rowGlobalCollectorMedia: "媒体",
+    rowGlobalCollectorBrowser: "浏览器",
+    actionTestGlobalFrontmost: "测试应用切换",
+    actionTestGlobalClipboard: "测试剪贴板",
+    actionTestGlobalReading: "测试阅读",
+    actionTestGlobalListening: "测试聆听",
     placeholderTitle: "即将推出",
     placeholderDesc: "此面板将在 Clawd 后续版本中加入，规划见 docs/plan-settings-panel.md。",
     toastSaveFailed: "保存失败：",
@@ -1966,6 +2012,18 @@ function renderGeneralTab(parent) {
     buildTranslatorDiagnosticsRow(),
     buildTerminalDiagnosticsRow(),
   ]));
+
+  parent.appendChild(buildSection(t("sectionGlobalActivity"), [
+    buildGlobalActivityEnabledRow(),
+    buildGlobalActivityStatusRow(),
+    buildGlobalRuleRow("frontmostAppReaction", "rowGlobalRuleFrontmost"),
+    buildGlobalRuleRow("clipboardReaction", "rowGlobalRuleClipboard"),
+    buildGlobalRuleRow("notificationReaction", "rowGlobalRuleNotification"),
+    buildGlobalRuleRow("presenceWake", "rowGlobalRulePresence"),
+    buildGlobalRuleRow("mediaPlaybackReaction", "rowGlobalRuleMedia"),
+    buildGlobalRuleRow("browserReadingReaction", "rowGlobalRuleBrowser"),
+    buildGlobalActivityDiagnosticsRow(),
+  ]));
 }
 
 function getMacTypingStatusDescKey() {
@@ -2129,6 +2187,103 @@ function buildTerminalDiagnosticsRow() {
     attachActivation(btn, () => runSettingsAction(() => window.settingsAPI.runTerminalActionCheck()));
   }
   ctrl.appendChild(btn);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function getGlobalActivitySnapshot() {
+  return snapshot && snapshot.globalActivityStatus ? snapshot.globalActivityStatus : null;
+}
+
+function getGlobalActivityRuleState(ruleKey) {
+  const rules = snapshot && snapshot.globalActivityRules;
+  return !!(rules && rules[ruleKey]);
+}
+
+function buildGlobalActivityEnabledRow() {
+  const supported = !!(getGlobalActivitySnapshot() && getGlobalActivitySnapshot().supported);
+  return buildSwitchRow({
+    key: "globalActivityEnabled",
+    labelKey: "rowGlobalActivity",
+    descKey: "rowGlobalActivityDesc",
+    descExtraKey: supported ? null : "rowGlobalActivityUnsupported",
+    disabled: !supported,
+  });
+}
+
+function buildGlobalActivityStatusRow() {
+  const status = getGlobalActivitySnapshot();
+  const activeText = status && status.activeRuleId
+    ? t("rowGlobalActivityStatusActive").replace("{rule}", status.activeRuleId)
+    : t("rowGlobalActivityStatusIdle");
+  const lastError = status && status.lastError ? status.lastError : t("rowGlobalActivityLastErrorNone");
+  const collectors = status && status.collectorStatus
+    ? [
+        `${t("rowGlobalCollectorFrontmost")}: ${status.collectorStatus.frontmostApp || "unknown"}`,
+        `${t("rowGlobalCollectorClipboard")}: ${status.collectorStatus.clipboard || "unknown"}`,
+        `${t("rowGlobalCollectorNotification")}: ${status.collectorStatus.notifications || "unknown"}`,
+        `${t("rowGlobalCollectorMedia")}: ${status.collectorStatus.media || "unknown"}`,
+        `${t("rowGlobalCollectorBrowser")}: ${status.collectorStatus.browser || "unknown"}`,
+      ].join(" · ")
+    : "";
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowGlobalActivityStatus"))}</span>` +
+      `<span class="row-desc">${escapeHtml(activeText)}</span>` +
+      `<span class="row-desc">${escapeHtml(lastError)}</span>` +
+      (collectors ? `<span class="row-desc">${escapeHtml(collectors)}</span>` : "") +
+    `</div>`;
+  return row;
+}
+
+function buildGlobalRuleRow(ruleKey, labelKey) {
+  const supported = !!(getGlobalActivitySnapshot() && getGlobalActivitySnapshot().supported);
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t(labelKey))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowGlobalActivityDesc"))}</span>` +
+    `</div>` +
+    `<div class="row-control"><div class="switch" role="switch" tabindex="0"></div></div>`;
+  const sw = row.querySelector(".switch");
+  const visualOn = getGlobalActivityRuleState(ruleKey);
+  if (visualOn) sw.classList.add("on");
+  sw.setAttribute("aria-checked", visualOn ? "true" : "false");
+  if (!supported) {
+    sw.classList.add("disabled");
+    sw.setAttribute("aria-disabled", "true");
+    sw.tabIndex = -1;
+    return row;
+  }
+  attachActivation(sw, () => {
+    const current = snapshot && snapshot.globalActivityRules ? snapshot.globalActivityRules : {};
+    return window.settingsAPI.update("globalActivityRules", {
+      ...current,
+      [ruleKey]: !getGlobalActivityRuleState(ruleKey),
+    });
+  });
+  return row;
+}
+
+function buildGlobalActivityDiagnosticsRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("sectionGlobalActivity"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowGlobalActivityDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.gap = "8px";
+  ctrl.style.flexWrap = "wrap";
+  ctrl.appendChild(buildActionButton("actionTestGlobalFrontmost", () => window.settingsAPI.runGlobalActivityTest("frontmostAppReaction")));
+  ctrl.appendChild(buildActionButton("actionTestGlobalClipboard", () => window.settingsAPI.runGlobalActivityTest("clipboardReaction")));
+  ctrl.appendChild(buildActionButton("actionTestGlobalReading", () => window.settingsAPI.runGlobalActivityTest("browserReadingReaction")));
+  ctrl.appendChild(buildActionButton("actionTestGlobalListening", () => window.settingsAPI.runGlobalActivityTest("mediaPlaybackReaction")));
   row.appendChild(ctrl);
   return row;
 }

@@ -102,6 +102,26 @@ function requirePlainObject(key) {
   };
 }
 
+function requireGlobalActivityRules(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { status: "error", message: "globalActivityRules must be a plain object" };
+  }
+  const required = [
+    "frontmostAppReaction",
+    "clipboardReaction",
+    "notificationReaction",
+    "presenceWake",
+    "mediaPlaybackReaction",
+    "browserReadingReaction",
+  ];
+  for (const key of required) {
+    if (typeof value[key] !== "boolean") {
+      return { status: "error", message: `globalActivityRules.${key} must be a boolean` };
+    }
+  }
+  return { status: "ok" };
+}
+
 const THEME_OVERRIDE_RESERVED_KEYS = new Set(["states", "tiers", "timings", "idleAnimations"]);
 const TIER_OVERRIDE_GROUPS = new Set(["workingTiers", "jugglingTiers"]);
 
@@ -212,6 +232,9 @@ const updateRegistry = {
   macTypingAwarenessEnabled: requireBoolean("macTypingAwarenessEnabled"),
   macTypingPermissionPrompted: requireBoolean("macTypingPermissionPrompted"),
   macTypingPermissionDismissed: requireBoolean("macTypingPermissionDismissed"),
+  globalActivityEnabled: requireBoolean("globalActivityEnabled"),
+  globalActivityRules: requireGlobalActivityRules,
+  globalActivityOnboardingShown: requireBoolean("globalActivityOnboardingShown"),
 
   // ── System-backed prefs (object-form: validate + effect pre-commit gate) ──
   //

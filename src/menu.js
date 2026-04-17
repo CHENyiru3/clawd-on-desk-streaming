@@ -100,6 +100,13 @@ module.exports = function initMenu(ctx) {
     if (isMac) {
       items.push({ label: t("testTerminalFocus"), click: () => ctx.runTerminalActionCheck && ctx.runTerminalActionCheck() });
     }
+    items.push(
+      { type: "separator" },
+      { label: t("testAppSwitch"), click: () => ctx.runGlobalActivityTest && ctx.runGlobalActivityTest("frontmostAppReaction") },
+      { label: t("testClipboardReaction"), click: () => ctx.runGlobalActivityTest && ctx.runGlobalActivityTest("clipboardReaction") },
+      { label: t("testReadingReaction"), click: () => ctx.runGlobalActivityTest && ctx.runGlobalActivityTest("browserReadingReaction") },
+      { label: t("testListeningReaction"), click: () => ctx.runGlobalActivityTest && ctx.runGlobalActivityTest("mediaPlaybackReaction") },
+    );
     return items;
   }
 

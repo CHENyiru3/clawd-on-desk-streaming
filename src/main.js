@@ -10,6 +10,11 @@ const { findNearestWorkArea, computeLooseClamp, SYNTHETIC_WORK_AREA } = require(
 const { getLaunchSizingWorkArea, getProportionalPixelSize } = require("./size-utils");
 const createMacosInputMonitor = require("./macos-input-monitor");
 const { runTerminalDiagnosticsCheck } = require("./terminal-diagnostics");
+const createGlobalRulesEngine = require("./global-rules");
+const createMacosFrontmostAppMonitor = require("./macos-frontmost-app-monitor");
+const createMacosClipboardMonitor = require("./macos-clipboard-monitor");
+const createMacosNotificationMonitor = require("./macos-notification-monitor");
+const createMacosMediaMonitor = require("./macos-media-monitor");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -171,12 +176,32 @@ let terminalDiagnosticsStatus = {
   lastError: null,
 };
 
+let globalActivityStatus = {
+  supported: isMac,
+  enabled: !!_settingsController.get("globalActivityEnabled"),
+  activeRuleId: null,
+  activeVisualState: null,
+  lastSignalAt: null,
+  collectorStatus: {
+    frontmostApp: isMac ? "idle" : "unsupported",
+    clipboard: isMac ? "idle" : "unsupported",
+    notifications: isMac ? "unsupported" : "unsupported",
+    media: isMac ? "idle" : "unsupported",
+    browser: isMac ? "idle" : "unsupported",
+  },
+  lastError: null,
+};
+
 function buildSettingsSnapshot() {
   return {
     ..._settingsController.getSnapshot(),
     macTypingPermissionStatus,
     translatorStatus: { ...translatorStatus },
     terminalDiagnosticsStatus: { ...terminalDiagnosticsStatus },
+    globalActivityStatus: {
+      ...globalActivityStatus,
+      collectorStatus: { ...(globalActivityStatus.collectorStatus || {}) },
+    },
   };
 }
 
@@ -314,6 +339,11 @@ function flushRuntimeStateToPrefs() {
 
 let _codexMonitor = null;          // Codex CLI JSONL log polling instance
 let _geminiMonitor = null;         // Gemini CLI session JSON polling instance
+let _globalRulesEngine = null;
+let _frontmostAppMonitor = null;
+let _clipboardMonitor = null;
+let _notificationMonitor = null;
+let _mediaMonitor = null;
 
 // Hook-based agents have no module-level monitor — they're gated at the
 // HTTP route layer. Only log-poll agents hit these branches.
@@ -342,6 +372,66 @@ function syncMacTypingMonitorFromPrefs() {
     console.warn("Clawd: failed to sync mac typing monitor:", err && err.message);
     macTypingPermissionStatus = "error";
   }
+}
+
+function syncGlobalActivityStatusFromEngine(snapshot = null) {
+  const next = snapshot || (_globalRulesEngine ? _globalRulesEngine.getSnapshot() : null);
+  if (!next) return;
+  globalActivityStatus = {
+    ...globalActivityStatus,
+    ...next,
+    collectorStatus: { ...(next.collectorStatus || globalActivityStatus.collectorStatus || {}) },
+  };
+}
+
+function handleGlobalRuleSignal(signal) {
+  if (!_globalRulesEngine) return;
+  const snapshot = _globalRulesEngine.notifySignal(signal);
+  syncGlobalActivityStatusFromEngine(snapshot);
+  if (_settingsController.get("globalActivityEnabled")) resetIdleTimer();
+  if (_state) {
+    _state.setGlobalPresenceActive(!!(snapshot && snapshot.presenceActive));
+    _state.setGlobalRuleState(snapshot && snapshot.activeVisualState ? snapshot.activeVisualState : null);
+  }
+  broadcastSettingsSnapshot();
+}
+
+function startGlobalActivityCollectors() {
+  if (!isMac || !_settingsController.get("globalActivityEnabled")) return;
+  try { _frontmostAppMonitor && _frontmostAppMonitor.start(); } catch (err) {
+    console.warn("Clawd: failed to start frontmost app monitor:", err && err.message);
+  }
+  try { _clipboardMonitor && _clipboardMonitor.start(); } catch (err) {
+    console.warn("Clawd: failed to start clipboard monitor:", err && err.message);
+  }
+  try { _notificationMonitor && _notificationMonitor.start(); } catch (err) {
+    console.warn("Clawd: failed to start notification monitor:", err && err.message);
+  }
+  try { _mediaMonitor && _mediaMonitor.start(); } catch (err) {
+    console.warn("Clawd: failed to start media monitor:", err && err.message);
+  }
+}
+
+function stopGlobalActivityCollectors() {
+  try { _frontmostAppMonitor && _frontmostAppMonitor.stop(); } catch {}
+  try { _clipboardMonitor && _clipboardMonitor.stop(); } catch {}
+  try { _notificationMonitor && _notificationMonitor.stop(); } catch {}
+  try { _mediaMonitor && _mediaMonitor.stop(); } catch {}
+}
+
+function syncGlobalActivityFromPrefs() {
+  if (!_globalRulesEngine) return;
+  const snap = _settingsController.getSnapshot();
+  _globalRulesEngine.refreshFromPrefs(snap);
+  if (snap.globalActivityEnabled && isMac) {
+    startGlobalActivityCollectors();
+  } else {
+    stopGlobalActivityCollectors();
+    _globalRulesEngine.stop();
+    _state.setGlobalPresenceActive(false);
+    _state.setGlobalRuleState(null);
+  }
+  syncGlobalActivityStatusFromEngine();
 }
 
 async function maybePromptMacTypingPermission() {
@@ -888,6 +978,21 @@ async function runTerminalActionCheck() {
     : { status: "error", message: terminalDiagnosticsStatus.lastError, detail: result };
 }
 
+function runGlobalActivityTest(ruleId) {
+  if (!_globalRulesEngine) {
+    return { status: "error", message: "Global activity engine unavailable." };
+  }
+  const result = _globalRulesEngine.runTest(ruleId);
+  syncGlobalActivityStatusFromEngine();
+  if (_state) {
+    const snapshot = _globalRulesEngine.getSnapshot();
+    _state.setGlobalPresenceActive(!!snapshot.presenceActive);
+    _state.setGlobalRuleState(snapshot.activeVisualState || null);
+  }
+  broadcastSettingsSnapshot();
+  return result;
+}
+
 async function triggerTranslate() {
   if (doNotDisturb || petHidden) return;
   showTranslateBubble();
@@ -1159,6 +1264,57 @@ _macInputMonitor.setHandlers({
   logger: (msg) => console.warn("Clawd:", msg),
 });
 
+_globalRulesEngine = createGlobalRulesEngine({
+  enabled: !!_settingsController.get("globalActivityEnabled"),
+  rules: _settingsController.get("globalActivityRules") || {},
+  onStateChange: (visualState, snapshot) => {
+    syncGlobalActivityStatusFromEngine(snapshot);
+    if (_state) {
+      _state.setGlobalPresenceActive(!!(snapshot && snapshot.presenceActive));
+      _state.setGlobalRuleState(visualState || null);
+    }
+  },
+  onStatusChange: (snapshot) => {
+    syncGlobalActivityStatusFromEngine(snapshot);
+  },
+});
+
+_frontmostAppMonitor = createMacosFrontmostAppMonitor({
+  onAppChange: (signal) => handleGlobalRuleSignal({ type: "frontmost-app-changed", ...signal }),
+  onStatus: (status) => {
+    _globalRulesEngine.setCollectorStatus("frontmostApp", status);
+    _globalRulesEngine.setCollectorStatus("browser", status);
+    syncGlobalActivityStatusFromEngine();
+  },
+});
+
+_clipboardMonitor = createMacosClipboardMonitor({
+  readText: () => {
+    const { clipboard } = require("electron");
+    return clipboard.readText();
+  },
+  onTextChange: (signal) => handleGlobalRuleSignal({ type: "clipboard-text-changed", ...signal }),
+  onStatus: (status) => {
+    _globalRulesEngine.setCollectorStatus("clipboard", status);
+    syncGlobalActivityStatusFromEngine();
+  },
+});
+
+_notificationMonitor = createMacosNotificationMonitor({
+  onStatus: (status) => {
+    _globalRulesEngine.setCollectorStatus("notifications", status);
+    syncGlobalActivityStatusFromEngine();
+  },
+});
+
+_mediaMonitor = createMacosMediaMonitor({
+  onPlaybackChange: (signal) => handleGlobalRuleSignal({ type: "media-state", ...signal }),
+  onStatus: (status) => {
+    _globalRulesEngine.setCollectorStatus("media", status);
+    syncGlobalActivityStatusFromEngine();
+  },
+});
+
 // ── Terminal focus — delegated to src/focus.js ──
 const _focus = require("./focus")({ _allowSetForeground });
 const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer, runMacFocusCheck } = _focus;
@@ -1348,6 +1504,7 @@ const _menuCtx = {
   runTranslatorHealthCheck: () => runTranslatorHealthCheck(),
   showTranslateBubbleTest: (mode) => showTranslateBubbleTest(mode),
   runTerminalActionCheck: () => runTerminalActionCheck(),
+  runGlobalActivityTest: (ruleId) => runGlobalActivityTest(ruleId),
   isAgentLauncherEnabled: () => {
     const snap = _settingsController.getSnapshot();
     const al = snap && snap.agentLauncher;
@@ -1432,6 +1589,13 @@ function wireSettingsSubscribers() {
         ...translatorStatus,
         backend: changes.translateProvider || "minimax",
       };
+    }
+    if ("globalActivityEnabled" in changes || "globalActivityRules" in changes) {
+      try {
+        syncGlobalActivityFromPrefs();
+      } catch (err) {
+        console.warn("Clawd: global activity sync failed:", err && err.message);
+      }
     }
 
     if ("agentLauncher" in changes) {
@@ -1952,6 +2116,8 @@ ipcMain.handle("settings:open-mac-typing-privacy", async () => {
 ipcMain.handle("settings:run-translator-health-check", () => runTranslatorHealthCheck());
 ipcMain.handle("settings:show-translate-bubble-test", (_event, mode) => showTranslateBubbleTest(mode));
 ipcMain.handle("settings:run-terminal-action-check", () => runTerminalActionCheck());
+ipcMain.handle("settings:run-global-activity-test", (_event, ruleId) => runGlobalActivityTest(ruleId));
+ipcMain.handle("settings:get-global-activity-status", () => ({ status: "ok", detail: globalActivityStatus }));
 
 // Static metadata for the Agents tab: name, eventSource, capabilities.
 // The renderer uses this (alongside the agents snapshot field) to render one
@@ -2770,6 +2936,7 @@ if (!gotTheLock) {
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     createWindow();
     syncMacTypingMonitorFromPrefs();
+    syncGlobalActivityFromPrefs();
     void maybePromptMacTypingPermission();
 
     // Register global shortcut for toggling pet visibility
@@ -2845,6 +3012,8 @@ if (!gotTheLock) {
     _tick.cleanup();
     _mini.cleanup();
     _macInputMonitor.stop();
+    stopGlobalActivityCollectors();
+    if (_globalRulesEngine) _globalRulesEngine.stop();
     if (_codexMonitor) _codexMonitor.stop();
     if (_geminiMonitor) _geminiMonitor.stop();
     stopTopmostWatchdog();

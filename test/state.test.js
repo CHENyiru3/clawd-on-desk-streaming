@@ -188,6 +188,14 @@ describe("resolveDisplayState()", () => {
     assert.strictEqual(dndApi.resolveDisplayState(), "idle");
     dndApi.cleanup();
   });
+
+  it("global rule overlay wins over idle but not working", () => {
+    api.setGlobalRuleState("reading");
+    assert.strictEqual(api.resolveDisplayState(), "reading");
+
+    api.sessions.set("s1", rawSession("working"));
+    assert.strictEqual(api.resolveDisplayState(), "working");
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -295,6 +303,14 @@ describe("working sub-animations", () => {
 
   it("composing falls back to thinking SVG when theme has no composing asset", () => {
     assert.strictEqual(api.getSvgOverride("composing"), "clawd-working-thinking.svg");
+  });
+
+  it("listening falls back to thinking SVG when theme has no listening asset", () => {
+    assert.strictEqual(api.getSvgOverride("listening"), "clawd-working-thinking.svg");
+  });
+
+  it("reading falls back to idle SVG when theme has no reading asset", () => {
+    assert.strictEqual(api.getSvgOverride("reading"), "clawd-idle-follow.svg");
   });
 
   it("2 working sessions → juggling SVG", () => {
