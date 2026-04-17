@@ -26,6 +26,13 @@ public class WinFocus {
     public static extern int GetWindowText(IntPtr hWnd, StringBuilder sb, int maxCount);
     [DllImport("user32.dll")] public static extern int GetWindowTextLength(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+    public struct RECT { public int Left, Top, Right, Bottom; }
+    public static readonly IntPtr HWND_TOP = IntPtr.Zero;
+    public const uint SWP_NOSIZE = 0x0001;
+    public const uint SWP_NOZORDER = 0x0004;
+    public const uint SWP_SHOWWINDOW = 0x0040;
     public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
     [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc cb, IntPtr lParam);
     public static void Focus(IntPtr hWnd) {
@@ -34,6 +41,17 @@ public class WinFocus {
         keybd_event(0x12, 0, 0, UIntPtr.Zero);
         keybd_event(0x12, 0, 2, UIntPtr.Zero);
         SetForegroundWindow(hWnd);
+    }
+    public static bool MoveWindowNear(IntPtr hWnd, int petX, int petY, int gap) {
+        if (hWnd == IntPtr.Zero) return false;
+        if (!GetWindowRect(hWnd, out RECT r)) return false;
+        int w = r.Right - r.Left;
+        int h = r.Bottom - r.Top;
+        int targetX = petX - w - gap;
+        if (targetX < 0) targetX = 0;
+        // Clamp so window doesn't go below screen bottom (assume screen height >= petY + h)
+        int targetY = petY;
+        return SetWindowPos(hWnd, HWND_TOP, targetX, targetY, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_SHOWWINDOW);
     }
     public static IntPtr FindByPidTitle(uint targetPid, string sub) {
         IntPtr found = IntPtr.Zero;
@@ -57,7 +75,7 @@ public class WinFocus {
 "@
 `;
 
-function makeFocusCmd(sourcePid, cwdCandidates) {
+function makeFocusCmd(sourcePid, cwdCandidates, petX, petY) {
   // Walk up the process tree (same proven logic as before).
   // When we find the process with MainWindowHandle, try title-matching first
   // to support multi-window editors (Cursor/VS Code). Fall back to MainWindowHandle.
@@ -69,11 +87,13 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
         return `([Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${b64}')))`;
       }).join(",")
     : "";
+  const gap = 8;
   const titleMatchBlock = psNames ? `
         $matched = $false
         foreach ($name in @(${psNames})) {
             $hwnd = [WinFocus]::FindByPidTitle([uint32]$curPid, $name)
             if ($hwnd -ne [IntPtr]::Zero) {
+                [WinFocus]::MoveWindowNear($hwnd, [int]${petX}, [int]${petY}, [int]${gap})
                 [WinFocus]::Focus($hwnd); $matched = $true; break
             }
         }
@@ -86,6 +106,7 @@ function makeFocusCmd(sourcePid, cwdCandidates) {
         foreach ($name in @(${psNames})) {
             $hwnd = [WinFocus]::FindByPidTitle([uint32]$wt.Id, $name)
             if ($hwnd -ne [IntPtr]::Zero) {
+                [WinFocus]::MoveWindowNear($hwnd, [int]${petX}, [int]${petY}, [int]${gap})
                 [WinFocus]::Focus($hwnd); $focused = $true; break
             }
         }
@@ -99,6 +120,7 @@ for ($i = 0; $i -lt 8; $i++) {
     $proc = Get-Process -Id $curPid -ErrorAction SilentlyContinue
     if (-not $proc -or $proc.ProcessName -eq 'explorer') { break }
     if ($proc.MainWindowHandle -ne 0) {${titleMatchBlock}
+        [WinFocus]::MoveWindowNear($proc.MainWindowHandle, [int]${petX}, [int]${petY}, [int]${gap})
         [WinFocus]::Focus($proc.MainWindowHandle)
         $focused = $true
         break
@@ -110,7 +132,10 @@ for ($i = 0; $i -lt 8; $i++) {
 if (-not $focused) {${wtTitleMatch}
     if (-not $focused) {
         $wt = Get-Process -Name 'WindowsTerminal' -ErrorAction SilentlyContinue | Select-Object -First 1
-        if ($wt -and $wt.MainWindowHandle -ne 0) { [WinFocus]::Focus($wt.MainWindowHandle) }
+        if ($wt -and $wt.MainWindowHandle -ne 0) {
+            [WinFocus]::MoveWindowNear($wt.MainWindowHandle, [int]${petX}, [int]${petY}, [int]${gap})
+            [WinFocus]::Focus($wt.MainWindowHandle)
+        }
     }
 }
 `;
@@ -270,14 +295,34 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
       }
     }
     const applePidList = pidCandidates.join(", ");
+    // Get pet position from ctx for repositioning
+    let petX = 0, petY = 0;
+    if (ctx && ctx.win && !ctx.win.isDestroyed()) {
+      try { [petX, petY] = ctx.win.getPosition(); } catch {}
+    }
+    const gap = 8;
     const script = `
       tell application "System Events"
         repeat with targetPid in {${applePidList}}
           set pidValue to contents of targetPid
           set pList to every process whose unix id is pidValue
           if (count of pList) > 0 then
-            set frontmost of item 1 of pList to true
-            exit repeat
+            try
+              set procName to name of item 1 of pList
+              tell process procName
+                set w to count of windows
+                if w > 0 then
+                  set winBounds to bounds of window 1
+                  set termWidth to (item 3 of winBounds) - (item 1 of winBounds)
+                  set termHeight to (item 4 of winBounds) - (item 2 of winBounds)
+                  set newX to (${petX} - termWidth - ${gap})
+                  if newX < 0 then set newX to 0
+                  set bounds of window 1 to {newX, ${petY}, newX + termWidth, ${petY} + termHeight}
+                end if
+                set frontmost to true
+                exit repeat
+              end tell
+            end try
           end if
         end repeat
       end tell`;
@@ -289,8 +334,13 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
   }
 
   if (isLinux) {
-    // Linux: try wmctrl (lookup by PID), then xdotool.
-    // Missing tools fail quietly so hooks never block the app.
+    // Get pet position for repositioning
+    let petX = 0, petY = 0;
+    if (ctx && ctx.win && !ctx.win.isDestroyed()) {
+      try { [petX, petY] = ctx.win.getPosition(); } catch {}
+    }
+    const gap = 8;
+    // Linux: move + activate via wmctrl (lookup by PID), then xdotool fallback.
     const tryXdoTool = () => {
       execFile("xdotool", ["search", "--pid", String(sourcePid), "windowactivate", "--sync"], {
         timeout: 1200,
@@ -301,16 +351,19 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
     execFile("wmctrl", ["-lp"], { timeout: 1000 }, (err, stdout) => {
       if (err || !stdout) return tryXdoTool();
       const lines = String(stdout).split(/\r?\n/);
-      const match = lines.find((line) => {
+      const matchLine = lines.find((line) => {
         const parts = line.trim().split(/\s+/);
         return parts.length >= 3 && Number(parts[2]) === Number(sourcePid);
       });
-      if (!match) return tryXdoTool();
-      const winId = match.trim().split(/\s+/)[0];
+      if (!matchLine) return tryXdoTool();
+      const winId = matchLine.trim().split(/\s+/)[0];
       if (!winId) return tryXdoTool();
-      execFile("wmctrl", ["-i", "-a", winId], { timeout: 1000 }, (activateErr) => {
-        if (activateErr) return tryXdoTool();
-        if (onDone) onDone();
+      // Move window to pet's left, then activate
+      execFile("wmctrl", ["-i", "-r", winId, "-e", `0,${petX - gap - 100},${petY},-1,-1`], { timeout: 1000 }, (moveErr) => {
+        execFile("wmctrl", ["-i", "-a", winId], { timeout: 1000 }, (activateErr) => {
+          if (activateErr) tryXdoTool();
+          else if (onDone) onDone();
+        });
       });
     });
     return;
@@ -330,8 +383,14 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
     }
   }
 
+  // Get pet position for repositioning
+  let petX = 0, petY = 0;
+  if (ctx && ctx.win && !ctx.win.isDestroyed()) {
+    try { [petX, petY] = ctx.win.getPosition(); } catch {}
+  }
+
   // Windows: send command to persistent PowerShell process (near-instant)
-  const cmd = makeFocusCmd(sourcePid, cwdCandidates);
+  const cmd = makeFocusCmd(sourcePid, cwdCandidates, petX, petY);
   if (psProc && psProc.stdin.writable) {
     psProc.stdin.write(cmd + "\n");
   } else {

@@ -547,7 +547,13 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
   const pidReachable = existing ? existing.pidReachable :
     (srcAgentPid ? isProcessAlive(srcAgentPid) : (srcPid ? isProcessAlive(srcPid) : false));
 
-  const base = { sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain, agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless, pidReachable };
+  const base = {
+    sourcePid: srcPid, cwd: srcCwd, editor: srcEditor, pidChain: srcPidChain,
+    agentPid: srcAgentPid, agentId: srcAgentId, host: srcHost, headless: srcHeadless,
+    pidReachable,
+    lastWorkingAt: existing ? existing.lastWorkingAt : null,
+    eventCount: existing ? existing.eventCount : 0,
+  };
 
   // Evict oldest session if at capacity and this is a new session
   if (!existing && sessions.size >= MAX_SESSIONS) {
@@ -637,12 +643,40 @@ function updateSession(sessionId, state, event, sourcePid, cwd, editor, pidChain
     } else if (existing && existing.state === "juggling" && state === "working") {
       existing.updatedAt = Date.now();
       existing.displayHint = pickDisplayHint("juggling", existing, displayHint);
+      // Increment typing cadence counter for juggling-hold events
+      if (existing.eventCount !== undefined) existing.eventCount += 1;
+      else existing.eventCount = 1;
       debugSession(`juggling-hold ${describeSession(sessionId, existing)} event=${event || "-"}`);
     } else {
       const dh = pickDisplayHint(state, existing, displayHint);
       sessions.set(sessionId, { state, updatedAt: Date.now(), displayHint: dh, ...base, resumeState: null });
     }
   }
+  // Track typing cadence: events/sec over the last 5s from non-headless sessions
+  // Update lastWorkingAt/eventCount on the current session first
+  if (state === "working" || state === "thinking" || state === "juggling") {
+    const cur = sessions.get(sessionId);
+    if (cur) {
+      cur.lastWorkingAt = Date.now();
+      if (cur.eventCount !== undefined) cur.eventCount += 1;
+      else cur.eventCount = 1;
+    }
+    const now = Date.now();
+    const CADENCE_WINDOW_MS = 5000;
+    let totalEvents = 0;
+    let activeCount = 0;
+    for (const s of sessions.values()) {
+      if (s.headless) continue;
+      const age = now - (s.lastWorkingAt || s.updatedAt);
+      if (age <= CADENCE_WINDOW_MS) {
+        totalEvents += s.eventCount || 1;
+        activeCount += 1;
+      }
+    }
+    const cadence = activeCount > 0 ? totalEvents / (CADENCE_WINDOW_MS / 1000) : 0;
+    if (ctx.sendToRenderer) ctx.sendToRenderer("typing-cadence", cadence);
+  }
+
   cleanStaleSessions();
 
   if (ONESHOT_STATES.has(state)) {

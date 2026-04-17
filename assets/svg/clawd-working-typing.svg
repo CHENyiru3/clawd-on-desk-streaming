@@ -4,7 +4,7 @@
       /* ===== Body (KEEP) ===== */
       .body-bounce {
         transform-origin: 7.5px 15px;
-        animation: body-bounce 0.35s infinite ease-in-out;
+        animation: body-bounce var(--body-speed, 0.35s) infinite ease-in-out;
       }
       .breathe {
         transform-origin: 7.5px 13px;
@@ -14,11 +14,11 @@
       /* ===== Arms (KEEP) ===== */
       .arm-l-type {
         transform-origin: 2px 10px;
-        animation: type-l 0.15s infinite ease-in-out;
+        animation: type-l var(--typing-speed, 0.15s) infinite ease-in-out;
       }
       .arm-r-type {
         transform-origin: 13px 10px;
-        animation: type-r 0.12s infinite ease-in-out;
+        animation: type-r var(--typing-speed, 0.12s) infinite ease-in-out;
       }
 
       /* ===== Eyes ===== */

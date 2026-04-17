@@ -5,6 +5,7 @@ const { pathToFileURL } = require("url");
 const { applyStationaryCollectionBehavior } = require("./mac-window");
 const hitGeometry = require("./hit-geometry");
 const animationCycle = require("./animation-cycle");
+const { translateText } = require("./translate");
 const { findNearestWorkArea, computeLooseClamp, SYNTHETIC_WORK_AREA } = require("./work-area");
 const { getLaunchSizingWorkArea, getProportionalPixelSize } = require("./size-utils");
 
@@ -536,6 +537,180 @@ const pendingPermissions = _perm.pendingPermissions;
 let permDebugLog = null; // set after app.whenReady()
 let updateDebugLog = null; // set after app.whenReady()
 let sessionDebugLog = null; // set after app.whenReady()
+
+// ── Translate bubble (Ctrl+Shift+T: clipboard → MiniMax → Chinese/English) ──
+let translateWin = null;
+let translateHideTimer = null;
+let translateMeasuredHeight = 0;
+
+const TRANSLATE_BUBBLE_WIDTH = 300;
+const TRANSLATE_BUBBLE_MARGIN = 8;
+const TRANSLATE_BUBBLE_GAP = 6;
+
+function computeTranslateBubblePosition() {
+  if (!win || win.isDestroyed()) return { x: 100, y: 100 };
+  const petBounds = win.getBounds();
+  const cx = petBounds.x + petBounds.width / 2;
+  const cy = petBounds.y + petBounds.height / 2;
+  const wa = getNearestWorkArea(cx, cy);
+  const hitRect = bubbleFollowPet && typeof getHitRectScreen === "function"
+    ? getHitRectScreen(petBounds)
+    : null;
+
+  // Layout: below pet if enough room, else bottom-right corner
+  let x, yBottom;
+  if (hitRect) {
+    const hitBottom = Math.round(hitRect.bottom);
+    const totalH = translateMeasuredHeight + 12;
+    if (wa.y + wa.height - hitBottom >= totalH) {
+      x = Math.max(wa.x, Math.min(cx - Math.round(TRANSLATE_BUBBLE_WIDTH / 2), wa.x + wa.width - TRANSLATE_BUBBLE_WIDTH));
+      return { x, y: hitBottom, width: TRANSLATE_BUBBLE_WIDTH };
+    }
+  }
+  // Fallback: bottom-right of work area
+  x = wa.x + wa.width - TRANSLATE_BUBBLE_WIDTH - TRANSLATE_BUBBLE_MARGIN;
+  const y = wa.y + wa.height - translateMeasuredHeight - 12 - TRANSLATE_BUBBLE_MARGIN;
+  return { x, y, width: TRANSLATE_BUBBLE_WIDTH };
+}
+
+function createTranslateWin() {
+  if (translateWin && !translateWin.isDestroyed()) return;
+  translateWin = new BrowserWindow({
+    width: TRANSLATE_BUBBLE_WIDTH,
+    height: 120,
+    x: 0,
+    y: 0,
+    show: false,
+    frame: false,
+    transparent: true,
+    alwaysOnTop: !isMac,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
+    ...(isMac ? { type: "panel" } : {}),
+    focusable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload-translate.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
+    },
+  });
+  if (isWin) translateWin.setAlwaysOnTop(true, "pop-up-menu");
+  translateWin.loadFile(path.join(__dirname, "translate-bubble.html"));
+  translateWin.webContents.once("did-finish-load", () => {
+    if (translateWin && !translateWin.isDestroyed()) guardAlwaysOnTop(translateWin);
+  });
+  translateWin.on("closed", () => { translateWin = null; });
+}
+
+function showTranslateBubble() {
+  if (!win || win.isDestroyed()) return;
+  createTranslateWin();
+  if (translateHideTimer) { clearTimeout(translateHideTimer); translateHideTimer = null; }
+  const pos = computeTranslateBubblePosition();
+  translateMeasuredHeight = translateMeasuredHeight || 120;
+  translateWin.setBounds({ ...pos, height: translateMeasuredHeight + 12 });
+  translateWin.show();
+}
+
+function hideTranslateBubble(immediate) {
+  if (!translateWin || translateWin.isDestroyed()) return;
+  if (translateHideTimer) { clearTimeout(translateHideTimer); translateHideTimer = null; }
+  if (immediate) {
+    translateWin.destroy();
+    translateWin = null;
+    return;
+  }
+  translateHideTimer = setTimeout(() => {
+    if (translateWin && !translateWin.isDestroyed()) {
+      translateWin.destroy();
+      translateWin = null;
+    }
+  }, 250);
+}
+
+async function triggerTranslate() {
+  if (doNotDisturb || petHidden) return;
+  showTranslateBubble();
+
+  // Read clipboard
+  let sourceText;
+  try {
+    const { clipboard } = require("electron");
+    sourceText = clipboard.readText();
+  } catch {
+    sourceText = "";
+  }
+
+  if (!sourceText || !sourceText.trim()) {
+    if (translateWin && !translateWin.isDestroyed()) {
+      translateWin.webContents.send("translate-show", {
+        status: "error",
+        sourceText: "",
+        errorMessage: "Clipboard is empty",
+        lang,
+      });
+    }
+    translateHideTimer = setTimeout(() => { if (translateWin && !translateWin.isDestroyed()) translateWin.destroy(); translateWin = null; }, 3000);
+    return;
+  }
+
+  // Show loading
+  if (translateWin && !translateWin.isDestroyed()) {
+    translateWin.webContents.send("translate-show", {
+      status: "loading",
+      sourceText,
+      lang,
+    });
+  }
+
+  try {
+    const { text: translatedText, detectedLang } = await translateText(sourceText);
+    const direction = detectedLang === "zh" ? "zh-en" : "en-zh";
+    if (translateWin && !translateWin.isDestroyed()) {
+      translateWin.webContents.send("translate-show", {
+        status: "done",
+        sourceText,
+        translatedText,
+        lang,
+        direction,
+      });
+    }
+  } catch (err) {
+    if (translateWin && !translateWin.isDestroyed()) {
+      translateWin.webContents.send("translate-show", {
+        status: "error",
+        sourceText,
+        errorMessage: err && err.message ? err.message : "Translation failed",
+        lang,
+      });
+    }
+  }
+}
+
+function handleTranslateHeight(event, height) {
+  const senderWin = BrowserWindow.fromWebContents(event.sender);
+  if (senderWin !== translateWin) return;
+  if (typeof height === "number" && height > 0) {
+    translateMeasuredHeight = Math.ceil(height);
+    const pos = computeTranslateBubblePosition();
+    translateWin.setBounds({ ...pos, height: translateMeasuredHeight + 12 });
+  }
+}
+
+function handleTranslateClose() {
+  hideTranslateBubble(false);
+}
+
+function cleanupTranslateBubble() {
+  if (translateHideTimer) { clearTimeout(translateHideTimer); translateHideTimer = null; }
+  if (translateWin && !translateWin.isDestroyed()) {
+    translateWin.destroy();
+    translateWin = null;
+  }
+}
+
 
 const _updateBubbleCtx = {
   get win() { return win; },
@@ -1959,6 +2134,8 @@ function createWindow() {
   ipcMain.on("permission-decide", (event, behavior) => _perm.handleDecide(event, behavior));
   ipcMain.on("update-bubble-height", (event, height) => handleUpdateBubbleHeight(event, height));
   ipcMain.on("update-bubble-action", (event, actionId) => handleUpdateBubbleAction(event, actionId));
+  ipcMain.on("translate-height", handleTranslateHeight);
+  ipcMain.on("translate-close", handleTranslateClose);
 
   initFocusHelper();
   startMainTick();
@@ -2291,6 +2468,15 @@ if (!gotTheLock) {
     // Register global shortcut for toggling pet visibility
     registerToggleShortcut();
 
+    // Register Ctrl+Shift+T for quick translate
+    try {
+      const TRANSLATE_SHORTCUT = "CommandOrControl+Shift+T";
+      const ok = globalShortcut.register(TRANSLATE_SHORTCUT, triggerTranslate);
+      if (!ok) console.warn("Clawd: failed to register translate shortcut:", TRANSLATE_SHORTCUT);
+    } catch (err) {
+      console.warn("Clawd: failed to register translate shortcut:", err.message);
+    }
+
     // Construct log monitors. We always instantiate them so toggling the
     // agent on/off later can call start()/stop() without paying the require
     // cost at click time. Whether we call .start() right now depends on the
@@ -2356,6 +2542,7 @@ if (!gotTheLock) {
     stopTopmostWatchdog();
     if (hwndRecoveryTimer) { clearTimeout(hwndRecoveryTimer); hwndRecoveryTimer = null; }
     _focus.cleanup();
+    cleanupTranslateBubble();
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
   });
 

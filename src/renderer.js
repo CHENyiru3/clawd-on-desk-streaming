@@ -385,6 +385,11 @@ function swapToFile(file, state, useObjectChannel) {
         attachEyeTracking(next);
       }
       if (miniLeftFlip) applyGlyphFlipCompensation(next);
+
+      // Apply dynamic typing cadence speed if this is a typing-related SVG
+      if (isTypingFile(file)) {
+        applyTypingSpeed(next, cadenceToSpeed(_currentTypingCadence));
+      }
     };
 
     next.addEventListener("load", swap, { once: true });
@@ -429,6 +434,11 @@ function swapToFile(file, state, useObjectChannel) {
       pendingSvgFile = null;
       clawdEl = next;
       currentDisplayedSvg = file;
+
+      // Apply dynamic typing cadence speed if this is a typing-related image
+      if (isTypingFile(file)) {
+        applyTypingSpeed(next, cadenceToSpeed(_currentTypingCadence));
+      }
     };
 
     next.addEventListener("load", swap, { once: true });
@@ -752,6 +762,44 @@ window.electronAPI.onEyeMove((dx, dy) => {
     return;
   }
   applyEyeMove(effectiveDx, dy);
+});
+
+// --- Dynamic typing cadence: modulate animation speed via CSS vars ---
+let _currentTypingCadence = 0;
+
+function cadenceToSpeed(cadence) {
+  // Map events/second to animation duration (seconds)
+  if (cadence === 0) return null;   // no recent activity — remove CSS vars, SVG default
+  if (cadence > 3)   return 0.07;   // frenetic typing
+  if (cadence > 1.5) return 0.12;  // normal (matches SVG default)
+  if (cadence > 0.5) return 0.2;   // relaxed
+  if (cadence > 0.1) return 0.4;   // slow
+  return 0.7;                       // nearly stopped
+}
+
+function applyTypingSpeed(el, speed) {
+  if (!el) return;
+  if (speed === null) {
+    el.style.removeProperty("--typing-speed");
+    el.style.removeProperty("--body-speed");
+  } else {
+    el.style.setProperty("--typing-speed", `${speed}s`);
+    // body bounces faster than arms
+    el.style.setProperty("--body-speed", `${Math.min(speed * 0.6, 0.25)}s`);
+  }
+}
+
+function isTypingFile(file) {
+  return /working|typing|building|conducting/i.test(file || "");
+}
+
+window.electronAPI.onTypingCadenceChange((cadence) => {
+  _currentTypingCadence = cadence;
+  const speed = cadenceToSpeed(cadence);
+  const el = clawdEl || pendingNext;
+  if (el && isTypingFile(currentDisplayedSvg || "")) {
+    applyTypingSpeed(el, speed);
+  }
 });
 
 // --- Sound playback (IPC from main, receives file:// URL from theme) ---
