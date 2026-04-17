@@ -11,7 +11,7 @@ function getClient() {
   if (!apiKey) return null;
   if (!_client || _apiKey !== apiKey) {
     _client = new Anthropic({
-      baseURL: "https://api.minimax.chat/v1",
+      baseURL: "https://api.minimaxi.com/v1",
       apiKey,
     });
     _apiKey = apiKey;

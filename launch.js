@@ -12,6 +12,10 @@ const { spawn } = require("child_process");
 const path = require("path");
 const electron = require("electron");
 
+// Load .env file so environment variables (e.g. MINIMAX_API_KEY) are available
+// to the Electron process. Safe to call even if no .env exists.
+try { require("dotenv/config"); } catch {}
+
 const env = { ...process.env };
 delete env.ELECTRON_RUN_AS_NODE;
 if (process.platform === "linux") {

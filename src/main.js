@@ -557,14 +557,15 @@ function computeTranslateBubblePosition() {
     ? getHitRectScreen(petBounds)
     : null;
 
-  // Layout: below pet if enough room, else bottom-right corner
-  let x, yBottom;
+  // Layout: above pet if enough room, else bottom-right corner
+  let x;
   if (hitRect) {
-    const hitBottom = Math.round(hitRect.bottom);
+    const hitTop = Math.round(hitRect.top);
     const totalH = translateMeasuredHeight + 12;
-    if (wa.y + wa.height - hitBottom >= totalH) {
+    if (hitTop - wa.y >= totalH) {
+      // Enough room above — place bubble there
       x = Math.max(wa.x, Math.min(cx - Math.round(TRANSLATE_BUBBLE_WIDTH / 2), wa.x + wa.width - TRANSLATE_BUBBLE_WIDTH));
-      return { x, y: hitBottom, width: TRANSLATE_BUBBLE_WIDTH };
+      return { x, y: hitTop - totalH, width: TRANSLATE_BUBBLE_WIDTH };
     }
   }
   // Fallback: bottom-right of work area
