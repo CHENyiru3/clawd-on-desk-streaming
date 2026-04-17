@@ -224,8 +224,11 @@ function executeMacFocusRequest(request) {
   macFocusLastRunAt = Date.now();
   macFocusLastPid = request.sourcePid;
 
-  const finalize = () => {
+  const finalize = (result) => {
     macFocusInFlight = false;
+    if (typeof request.onResult === "function") {
+      try { request.onResult(result); } catch {}
+    }
     if (macQueuedFocusRequest) flushQueuedMacFocus();
   };
 
@@ -233,12 +236,12 @@ function executeMacFocusRequest(request) {
   scheduleTerminalTabFocus(request.editor, request.pidChain);
 }
 
-function requestMacFocus(sourcePid, cwd, editor, pidChain) {
+function requestMacFocus(sourcePid, cwd, editor, pidChain, onResult) {
   const elapsed = Date.now() - macFocusLastRunAt;
   const inCooldown = elapsed < MAC_FOCUS_THROTTLE_MS;
   if (inCooldown && macFocusLastPid === sourcePid) return;
 
-  const request = { sourcePid, cwd, editor, pidChain };
+  const request = { sourcePid, cwd, editor, pidChain, onResult };
   if (macFocusInFlight) {
     macQueuedFocusRequest = request;
     return;
@@ -302,6 +305,7 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
     }
     const gap = 8;
     const script = `
+      set clawdStatus to "no_process"
       tell application "System Events"
         repeat with targetPid in {${applePidList}}
           set pidValue to contents of targetPid
@@ -318,17 +322,29 @@ function focusTerminalWindowLegacy(sourcePid, cwd, onDone, pidChain) {
                   set newX to (${petX} - termWidth - ${gap})
                   if newX < 0 then set newX to 0
                   set bounds of window 1 to {newX, ${petY}, newX + termWidth, ${petY} + termHeight}
+                  set frontmost to true
+                  return "ok:" & (pidValue as text)
+                else
+                  set clawdStatus to "no_window:" & (pidValue as text)
                 end if
-                set frontmost to true
-                exit repeat
               end tell
+            on error
+              set clawdStatus to "no_window:" & (pidValue as text)
             end try
           end if
         end repeat
       end tell`;
-    execFile("osascript", ["-e", script], { timeout: MAC_FOCUS_TIMEOUT_MS }, (err) => {
+    execFile("osascript", ["-e", script, "-e", "return clawdStatus"], { timeout: MAC_FOCUS_TIMEOUT_MS }, (err, stdout) => {
       if (err) console.warn("focusTerminal macOS failed:", err.message);
-      if (onDone) onDone();
+      if (onDone) {
+        if (err) onDone({ ok: false, reason: "osascript_failed", message: err.message });
+        else {
+          const result = String(stdout || "").trim();
+          if (result.startsWith("ok:")) onDone({ ok: true, targetPid: Number(result.slice(3)) || sourcePid });
+          else if (result.startsWith("no_window:")) onDone({ ok: false, reason: "no_window", targetPid: Number(result.slice(10)) || sourcePid });
+          else onDone({ ok: false, reason: "no_process" });
+        }
+      }
     });
     return;
   }
@@ -413,6 +429,14 @@ function cleanup() {
   macFocusInFlight = false;
 }
 
-return { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer, cleanup };
+function runMacFocusCheck(sourcePid, cwd, editor, pidChain) {
+  if (!isMac) return Promise.resolve({ ok: false, reason: "unsupported" });
+  return new Promise((resolve) => {
+    focusTerminalWindowLegacy(sourcePid, cwd, resolve, pidChain);
+    scheduleTerminalTabFocus(editor, pidChain);
+  });
+}
+
+return { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer, cleanup, runMacFocusCheck };
 
 };

@@ -46,6 +46,19 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.autoStartWithClaude, false);
   });
 
+  it("seeds mac typing awareness prefs", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(typeof d.macTypingAwarenessEnabled, "boolean");
+    assert.strictEqual(d.macTypingPermissionPrompted, false);
+    assert.strictEqual(d.macTypingPermissionDismissed, false);
+  });
+
+  it("seeds MiniMax translation prefs", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(d.translateProvider, "minimax");
+    assert.strictEqual(d.translateApiKey, "");
+  });
+
   it("seeds all known agents as enabled", () => {
     const d = prefs.getDefaults();
     for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "opencode"]) {
@@ -81,6 +94,9 @@ describe("prefs.validate", () => {
       x: NaN,                // not finite
       bubbleFollowPet: true, // ok
       hideBubbles: 0,        // wrong type
+      macTypingAwarenessEnabled: "yes",
+      translateProvider: "googletrans",
+      translateApiKey: 42,
     });
     const d = prefs.getDefaults();
     assert.strictEqual(v.lang, d.lang);
@@ -88,6 +104,9 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.x, 0);
     assert.strictEqual(v.bubbleFollowPet, true);
     assert.strictEqual(v.hideBubbles, false);
+    assert.strictEqual(typeof v.macTypingAwarenessEnabled, "boolean");
+    assert.strictEqual(v.translateProvider, "minimax");
+    assert.strictEqual(v.translateApiKey, "");
   });
 
   it("keeps valid fields verbatim", () => {
@@ -109,6 +128,15 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.size, "P:15");
     assert.strictEqual(v.miniEdge, "left");
     assert.strictEqual(v.theme, "calico");
+  });
+
+  it("trims translateApiKey and keeps minimax provider", () => {
+    const v = prefs.validate({
+      translateProvider: "minimax",
+      translateApiKey: "  secret-key  ",
+    });
+    assert.strictEqual(v.translateProvider, "minimax");
+    assert.strictEqual(v.translateApiKey, "secret-key");
   });
 
   it("normalizes agents (drops malformed entries)", () => {

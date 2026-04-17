@@ -40,10 +40,11 @@ let DND_SKIP_YAWN = false;
 let COLLAPSE_DURATION = 0;
 let SLEEP_MODE = "full";
 const SLEEP_SEQUENCE = new Set(["yawning", "dozing", "collapsing", "sleeping", "waking"]);
+const DEEP_SLEEP_STATES = new Set(["collapsing", "sleeping"]);
 
 const STATE_PRIORITY = {
-  error: 8, notification: 7, sweeping: 6, attention: 5,
-  carrying: 4, juggling: 4, working: 3, typing: 3, thinking: 2, idle: 1, sleeping: 0,
+  error: 9, notification: 8, sweeping: 7, attention: 6,
+  carrying: 5, juggling: 5, working: 4, typing: 4, thinking: 3, composing: 2, idle: 1, sleeping: 0,
 };
 
 const ONESHOT_STATES = new Set(["attention", "error", "sweeping", "notification", "carrying"]);
@@ -77,6 +78,7 @@ let pendingState = null;
 let eyeResendTimer = null;
 let updateVisualState = null;
 let updateVisualSvgOverride = null;
+let composingActive = false;
 
 const UPDATE_VISUAL_STATE_MAP = {
   checking: "sweeping",
@@ -303,7 +305,7 @@ function applyState(state, svgOverride) {
   if (!supervisorForce && ctx.miniMode && !state.startsWith("mini-")) {
     if (state === "notification") return applyState("mini-alert");
     if (state === "attention") return applyState("mini-happy");
-    if (state === "working" || state === "thinking" || state === "juggling") {
+    if (state === "working" || state === "thinking" || state === "juggling" || state === "composing") {
       if (hasOwnVisualFiles("mini-working")) return applyState("mini-working");
       return;
     }
@@ -830,6 +832,14 @@ function resolveDisplayState() {
   if (updateVisualState && (STATE_PRIORITY[updateVisualState] || 0) >= (STATE_PRIORITY[best] || 0)) {
     return updateVisualState;
   }
+  if (
+    composingActive
+    && !ctx.doNotDisturb
+    && !DEEP_SLEEP_STATES.has(currentState)
+    && (STATE_PRIORITY[best] || 0) <= (STATE_PRIORITY.idle || 0)
+  ) {
+    return "composing";
+  }
   return best;
 }
 
@@ -842,6 +852,22 @@ function setUpdateVisualState(kind) {
   updateVisualState = UPDATE_VISUAL_STATE_MAP[kind] || kind;
   updateVisualSvgOverride = UPDATE_VISUAL_SVG_MAP[kind] || null;
   return updateVisualState;
+}
+
+function setComposingActive(active) {
+  const nextActive = active === true;
+  if (nextActive === composingActive) return composingActive;
+  composingActive = nextActive;
+
+  if (ctx.doNotDisturb || DEEP_SLEEP_STATES.has(currentState)) {
+    return composingActive;
+  }
+
+  const resolved = resolveDisplayState();
+  if (resolved !== currentState || resolved === "composing" || currentState === "composing") {
+    setState(resolved, getSvgOverride(resolved));
+  }
+  return composingActive;
 }
 
 function getActiveWorkingCount() {
@@ -883,6 +909,14 @@ function getSvgOverride(state) {
     return updateVisualSvgOverride;
   }
   if (state === "idle") return SVG_IDLE_FOLLOW;
+  if (state === "composing") {
+    if (hasOwnVisualFiles("composing")) {
+      const composingSvg = resolveVisualBinding("composing");
+      if (composingSvg) return composingSvg;
+    }
+    const thinkingSvg = resolveVisualBinding("thinking");
+    return thinkingSvg || SVG_IDLE_FOLLOW;
+  }
   if (state === "working") {
     const hinted = getWinningSessionDisplayHint("working");
     if (hinted) return hinted;
@@ -1041,13 +1075,14 @@ function cleanup() {
 }
 
 return {
-  setState, applyState, applySupervisorState, updateSession, resolveDisplayState, resolveVisualBinding, setUpdateVisualState,
+  setState, applyState, applySupervisorState, updateSession, resolveDisplayState, resolveVisualBinding, setUpdateVisualState, setComposingActive,
   enableDoNotDisturb, disableDoNotDisturb,
   startStaleCleanup, stopStaleCleanup, startWakePoll, stopWakePoll,
   getSvgOverride, cleanStaleSessions, startStartupRecovery, refreshTheme,
   detectRunningAgentProcesses, buildSessionSubmenu,
   clearSessionsByAgent,
   getCurrentState, getCurrentSvg, getCurrentHitBox, getStartupRecoveryActive,
+  getComposingActive: () => composingActive,
   sessions, STATE_PRIORITY, ONESHOT_STATES, SLEEP_SEQUENCE,
   get STATE_SVGS() { return STATE_SVGS; },
   get HIT_BOXES() { return HIT_BOXES; },

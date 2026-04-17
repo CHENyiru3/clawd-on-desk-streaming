@@ -5,9 +5,11 @@ const { pathToFileURL } = require("url");
 const { applyStationaryCollectionBehavior } = require("./mac-window");
 const hitGeometry = require("./hit-geometry");
 const animationCycle = require("./animation-cycle");
-const { translateText } = require("./translate");
+const { translateText, setApiKey, checkTranslatorRuntime } = require("./translate");
 const { findNearestWorkArea, computeLooseClamp, SYNTHETIC_WORK_AREA } = require("./work-area");
 const { getLaunchSizingWorkArea, getProportionalPixelSize } = require("./size-utils");
+const createMacosInputMonitor = require("./macos-input-monitor");
+const { runTerminalDiagnosticsCheck } = require("./terminal-diagnostics");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -17,6 +19,7 @@ const isMac = process.platform === "darwin";
 const isLinux = process.platform === "linux";
 const isWin = process.platform === "win32";
 const LINUX_WINDOW_TYPE = "toolbar";
+const MAC_TYPING_PRIVACY_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
 
 
 // ── Windows: AllowSetForegroundWindow via FFI ──
@@ -147,6 +150,91 @@ const _settingsController = createSettingsController({
 // Updated by the subscriber in `wireSettingsSubscribers()` below — never
 // assign directly.
 let lang = _settingsController.get("lang");
+let macTypingPermissionStatus = isMac ? "unavailable" : "unsupported";
+setApiKey(_settingsController.get("translateApiKey") || "");
+
+let translatorStatus = {
+  backend: "minimax",
+  configured: !!((_settingsController.get("translateApiKey") || process.env.MINIMAX_API_KEY || "").trim()),
+  health: "unknown",
+  lastCheckedAt: null,
+  lastError: null,
+  lastDirection: null,
+};
+
+let terminalDiagnosticsStatus = {
+  supported: isMac,
+  lastCheckedAt: null,
+  lastTargetPid: null,
+  lastTargetLabel: null,
+  lastResult: "unknown",
+  lastError: null,
+};
+
+function buildSettingsSnapshot() {
+  return {
+    ..._settingsController.getSnapshot(),
+    macTypingPermissionStatus,
+    translatorStatus: { ...translatorStatus },
+    terminalDiagnosticsStatus: { ...terminalDiagnosticsStatus },
+  };
+}
+
+function updateTranslatorStatusSuccess(direction = null) {
+  translatorStatus = {
+    ...translatorStatus,
+    configured: !!((_settingsController.get("translateApiKey") || process.env.MINIMAX_API_KEY || "").trim()),
+    health: "ok",
+    lastCheckedAt: Date.now(),
+    lastError: null,
+    lastDirection: direction || translatorStatus.lastDirection,
+  };
+}
+
+function updateTranslatorStatusError(err) {
+  translatorStatus = {
+    ...translatorStatus,
+    configured: !!((_settingsController.get("translateApiKey") || process.env.MINIMAX_API_KEY || "").trim()),
+    health: "error",
+    lastCheckedAt: Date.now(),
+    lastError: err && err.message ? err.message : "Translation failed.",
+  };
+}
+
+function getUiLang() {
+  return lang === "zh" ? "zh" : "en";
+}
+
+function getTranslateStrings() {
+  return getUiLang() === "zh"
+    ? {
+        emptyClipboard: "剪贴板为空",
+        loading: "翻译诊断中…",
+        successSource: "Diagnostic sample",
+        successText: "这是一个翻译气泡诊断示例。",
+        errorText: "这是一个用于检查错误样式的示例。",
+      }
+    : {
+        emptyClipboard: "Clipboard is empty",
+        loading: "Running translation diagnostic…",
+        successSource: "Diagnostic sample",
+        successText: "This is a translation bubble diagnostic sample.",
+        errorText: "This is a sample error used to verify the bubble styling.",
+      };
+}
+
+function broadcastSettingsSnapshot(changes = null) {
+  try {
+    const payload = { changes, snapshot: buildSettingsSnapshot() };
+    for (const bw of BrowserWindow.getAllWindows()) {
+      if (!bw.isDestroyed() && bw.webContents && !bw.webContents.isDestroyed()) {
+        bw.webContents.send("settings-changed", payload);
+      }
+    }
+  } catch (err) {
+    console.warn("Clawd: settings-changed broadcast failed:", err && err.message);
+  }
+}
 
 const {
   launchAgentTerminal,
@@ -236,6 +324,81 @@ function startMonitorForAgent(agentId) {
 function stopMonitorForAgent(agentId) {
   if (agentId === "codex" && _codexMonitor) _codexMonitor.stop();
   else if (agentId === "gemini-cli" && _geminiMonitor) _geminiMonitor.stop();
+}
+
+function syncMacTypingMonitorFromPrefs() {
+  if (!isMac) {
+    macTypingPermissionStatus = "unsupported";
+    return;
+  }
+  try {
+    if (macTypingAwarenessEnabled) _macInputMonitor.start();
+    else {
+      _macInputMonitor.stop();
+      _state.setComposingActive(false);
+    }
+    macTypingPermissionStatus = _macInputMonitor.getStatus();
+  } catch (err) {
+    console.warn("Clawd: failed to sync mac typing monitor:", err && err.message);
+    macTypingPermissionStatus = "error";
+  }
+}
+
+async function maybePromptMacTypingPermission() {
+  if (!isMac || !macTypingAwarenessEnabled) return;
+  const snap = _settingsController.getSnapshot();
+  if (snap.macTypingPermissionPrompted || snap.macTypingPermissionDismissed) return;
+
+  const granted = _macInputMonitor.requestPermission();
+  macTypingPermissionStatus = _macInputMonitor.getStatus();
+  _settingsController.applyBulk({ macTypingPermissionPrompted: true });
+  if (granted) {
+    syncMacTypingMonitorFromPrefs();
+    return;
+  }
+
+  const parent = settingsWindow || win || null;
+  const copy = {
+    en: {
+      title: "Enable typing awareness on macOS?",
+      detail: "Clawd can react while you type anywhere on your Mac. macOS requires Input Monitoring permission for this feature.",
+      open: "Open Settings",
+      later: "Not now",
+      dismiss: "Don't ask again",
+    },
+    zh: {
+      title: "要开启 macOS 打字感知吗？",
+      detail: "Clawd 可以在你输入时做出反应。macOS 需要为此授予“输入监控”权限。",
+      open: "打开设置",
+      later: "稍后",
+      dismiss: "不再提示",
+    },
+  }[lang] || {
+    title: "Enable typing awareness on macOS?",
+    detail: "Clawd can react while you type anywhere on your Mac. macOS requires Input Monitoring permission for this feature.",
+    open: "Open Settings",
+    later: "Not now",
+    dismiss: "Don't ask again",
+  };
+
+  try {
+    const { response } = await dialog.showMessageBox(parent, {
+      type: "info",
+      buttons: [copy.open, copy.later, copy.dismiss],
+      defaultId: 0,
+      cancelId: 1,
+      noLink: true,
+      message: copy.title,
+      detail: copy.detail,
+    });
+    if (response === 0) {
+      await shell.openExternal(MAC_TYPING_PRIVACY_URL);
+    } else if (response === 2) {
+      _settingsController.applyBulk({ macTypingPermissionDismissed: true });
+    }
+  } catch (err) {
+    console.warn("Clawd: mac typing permission dialog failed:", err && err.message);
+  }
 }
 
 // ── Theme loader ──
@@ -332,8 +495,17 @@ let bubbleFollowPet = _settingsController.get("bubbleFollowPet");
 let hideBubbles = _settingsController.get("hideBubbles");
 let showSessionId = _settingsController.get("showSessionId");
 let soundMuted = _settingsController.get("soundMuted");
+let macTypingAwarenessEnabled = _settingsController.get("macTypingAwarenessEnabled");
 let petHidden = false;
 const DEFAULT_TOGGLE_SHORTCUT = "CommandOrControl+Shift+Alt+C";
+
+const _macInputMonitor = createMacosInputMonitor({
+  onStatusChange: (status) => {
+    macTypingPermissionStatus = status;
+    broadcastSettingsSnapshot();
+  },
+  logger: (msg) => console.warn("Clawd:", msg),
+});
 
 function togglePetVisibility() {
   if (!win || win.isDestroyed()) return;
@@ -615,6 +787,13 @@ function showTranslateBubble() {
   translateWin.show();
 }
 
+function showTranslateBubblePayload(payload) {
+  showTranslateBubble();
+  if (translateWin && !translateWin.isDestroyed()) {
+    translateWin.webContents.send("translate-show", payload);
+  }
+}
+
 function hideTranslateBubble(immediate) {
   if (!translateWin || translateWin.isDestroyed()) return;
   if (translateHideTimer) { clearTimeout(translateHideTimer); translateHideTimer = null; }
@@ -631,6 +810,84 @@ function hideTranslateBubble(immediate) {
   }, 250);
 }
 
+async function runTranslatorHealthCheck() {
+  try {
+    const result = await checkTranslatorRuntime();
+    updateTranslatorStatusSuccess(result.direction || null);
+    broadcastSettingsSnapshot();
+    return {
+      status: "ok",
+      message: "MiniMax translator is ready.",
+      detail: result,
+    };
+  } catch (err) {
+    updateTranslatorStatusError(err);
+    broadcastSettingsSnapshot();
+    return {
+      status: "error",
+      message: err && err.message ? err.message : "Translation failed.",
+      detail: {
+        code: err && err.code ? err.code : "unknown",
+      },
+    };
+  }
+}
+
+function showTranslateBubbleTest(mode) {
+  const strings = getTranslateStrings();
+  const base = {
+    sourceText: strings.successSource,
+    lang: getUiLang(),
+    diagnostic: { source: "test", label: "Diagnostic" },
+  };
+  if (mode === "loading") {
+    showTranslateBubblePayload({
+      ...base,
+      status: "loading",
+      direction: "en-zh",
+    });
+    return { status: "ok", message: "Showing loading translation bubble." };
+  }
+  if (mode === "success") {
+    showTranslateBubblePayload({
+      ...base,
+      status: "done",
+      translatedText: strings.successText,
+      direction: "en-zh",
+    });
+    return { status: "ok", message: "Showing success translation bubble." };
+  }
+  if (mode === "error") {
+    showTranslateBubblePayload({
+      ...base,
+      status: "error",
+      errorMessage: strings.errorText,
+    });
+    return { status: "ok", message: "Showing error translation bubble." };
+  }
+  return { status: "error", message: `Unknown translation bubble test mode: ${mode}` };
+}
+
+async function runTerminalActionCheck() {
+  const result = await runTerminalDiagnosticsCheck({
+    sessions,
+    statePriority: STATE_PRIORITY,
+    executeFocus: (target) => runMacFocusCheck(target.sourcePid, target.cwd, target.editor, target.pidChain),
+  });
+  terminalDiagnosticsStatus = {
+    ...terminalDiagnosticsStatus,
+    lastCheckedAt: Date.now(),
+    lastTargetPid: result.targetPid || null,
+    lastTargetLabel: result.targetLabel || null,
+    lastResult: result.ok ? "ok" : "error",
+    lastError: result.ok ? null : (result.message || result.reason || "Terminal action check failed."),
+  };
+  broadcastSettingsSnapshot();
+  return result.ok
+    ? { status: "ok", message: "Terminal focus and position check completed.", detail: result }
+    : { status: "error", message: terminalDiagnosticsStatus.lastError, detail: result };
+}
+
 async function triggerTranslate() {
   if (doNotDisturb || petHidden) return;
   showTranslateBubble();
@@ -645,48 +902,46 @@ async function triggerTranslate() {
   }
 
   if (!sourceText || !sourceText.trim()) {
-    if (translateWin && !translateWin.isDestroyed()) {
-      translateWin.webContents.send("translate-show", {
-        status: "error",
-        sourceText: "",
-        errorMessage: "Clipboard is empty",
-        lang,
-      });
-    }
+    showTranslateBubblePayload({
+      status: "error",
+      sourceText: "",
+      errorMessage: getTranslateStrings().emptyClipboard,
+      lang: getUiLang(),
+      diagnostic: { source: "clipboard" },
+    });
     translateHideTimer = setTimeout(() => { if (translateWin && !translateWin.isDestroyed()) translateWin.destroy(); translateWin = null; }, 3000);
     return;
   }
 
-  // Show loading
-  if (translateWin && !translateWin.isDestroyed()) {
-    translateWin.webContents.send("translate-show", {
-      status: "loading",
-      sourceText,
-      lang,
-    });
-  }
+  showTranslateBubblePayload({
+    status: "loading",
+    sourceText,
+    lang: getUiLang(),
+    diagnostic: { source: "clipboard" },
+  });
 
   try {
-    const { text: translatedText, detectedLang } = await translateText(sourceText);
-    const direction = detectedLang === "zh" ? "zh-en" : "en-zh";
-    if (translateWin && !translateWin.isDestroyed()) {
-      translateWin.webContents.send("translate-show", {
-        status: "done",
-        sourceText,
-        translatedText,
-        lang,
-        direction,
-      });
-    }
+    const { text: translatedText, direction } = await translateText(sourceText);
+    updateTranslatorStatusSuccess(direction);
+    broadcastSettingsSnapshot();
+    showTranslateBubblePayload({
+      status: "done",
+      sourceText,
+      translatedText,
+      lang: getUiLang(),
+      direction,
+      diagnostic: { source: "clipboard" },
+    });
   } catch (err) {
-    if (translateWin && !translateWin.isDestroyed()) {
-      translateWin.webContents.send("translate-show", {
-        status: "error",
-        sourceText,
-        errorMessage: err && err.message ? err.message : "Translation failed",
-        lang,
-      });
-    }
+    updateTranslatorStatusError(err);
+    broadcastSettingsSnapshot();
+    showTranslateBubblePayload({
+      status: "error",
+      sourceText,
+      errorMessage: err && err.message ? err.message : "Translation failed",
+      lang: getUiLang(),
+      diagnostic: { source: "clipboard" },
+    });
   }
 }
 
@@ -888,9 +1143,25 @@ const _tickCtx = {
 const _tick = require("./tick")(_tickCtx);
 const { startMainTick, resetIdleTimer } = _tick;
 
+_macInputMonitor.setHandlers({
+  onTypingStart: () => {
+    resetIdleTimer();
+    _state.setComposingActive(true);
+  },
+  onTypingStop: () => {
+    resetIdleTimer();
+    _state.setComposingActive(false);
+  },
+  onStatusChange: (status) => {
+    macTypingPermissionStatus = status;
+    broadcastSettingsSnapshot();
+  },
+  logger: (msg) => console.warn("Clawd:", msg),
+});
+
 // ── Terminal focus — delegated to src/focus.js ──
 const _focus = require("./focus")({ _allowSetForeground });
-const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer } = _focus;
+const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer, runMacFocusCheck } = _focus;
 
 // ── HTTP server — delegated to src/server.js ──
 const _serverCtx = {
@@ -1074,6 +1345,9 @@ const _menuCtx = {
   ensureUserThemesDir: () => themeLoader.ensureUserThemesDir(),
   openSettingsWindow: () => openSettingsWindow(),
   openAgentCli: () => tryOpenAgentCli(),
+  runTranslatorHealthCheck: () => runTranslatorHealthCheck(),
+  showTranslateBubbleTest: (mode) => showTranslateBubbleTest(mode),
+  runTerminalActionCheck: () => runTerminalActionCheck(),
   isAgentLauncherEnabled: () => {
     const snap = _settingsController.getSnapshot();
     const al = snap && snap.agentLauncher;
@@ -1133,6 +1407,32 @@ function wireSettingsSubscribers() {
     if ("hideBubbles" in changes) hideBubbles = changes.hideBubbles;
     if ("showSessionId" in changes) showSessionId = changes.showSessionId;
     if ("soundMuted" in changes) soundMuted = changes.soundMuted;
+    if ("macTypingAwarenessEnabled" in changes) {
+      macTypingAwarenessEnabled = changes.macTypingAwarenessEnabled;
+      try {
+        if (isMac && macTypingAwarenessEnabled) _macInputMonitor.start();
+        else {
+          _macInputMonitor.stop();
+          _state.setComposingActive(false);
+        }
+        macTypingPermissionStatus = _macInputMonitor.getStatus();
+      } catch (err) {
+        console.warn("Clawd: mac typing awareness sync failed:", err && err.message);
+      }
+    }
+    if ("translateApiKey" in changes) {
+      setApiKey(changes.translateApiKey || "");
+      translatorStatus = {
+        ...translatorStatus,
+        configured: !!((changes.translateApiKey || process.env.MINIMAX_API_KEY || "").trim()),
+      };
+    }
+    if ("translateProvider" in changes) {
+      translatorStatus = {
+        ...translatorStatus,
+        backend: changes.translateProvider || "minimax",
+      };
+    }
 
     if ("agentLauncher" in changes) {
       try { pushAgentLauncherToHit(); } catch (err) {
@@ -1164,15 +1464,7 @@ function wireSettingsSubscribers() {
     }
 
     // 4. Broadcast to all renderer windows for the future settings panel.
-    try {
-      for (const bw of BrowserWindow.getAllWindows()) {
-        if (!bw.isDestroyed() && bw.webContents && !bw.webContents.isDestroyed()) {
-          bw.webContents.send("settings-changed", { changes, snapshot: _settingsController.getSnapshot() });
-        }
-      }
-    } catch (err) {
-      console.warn("Clawd: settings-changed broadcast failed:", err && err.message);
-    }
+    broadcastSettingsSnapshot(changes);
   });
 }
 wireSettingsSubscribers();
@@ -1624,7 +1916,7 @@ function _previewAnimationOverride(payload) {
 // ── IPC: settings panel write entry points ──
 // Renderer-side callers (the future settings panel) use these. Menu/main code
 // in this process calls _settingsController directly — no IPC round-trip.
-ipcMain.handle("settings:get-snapshot", () => _settingsController.getSnapshot());
+ipcMain.handle("settings:get-snapshot", () => buildSettingsSnapshot());
 ipcMain.handle("settings:update", (_event, payload) => {
   if (!payload || typeof payload !== "object") {
     return { status: "error", message: "settings:update payload must be { key, value }" };
@@ -1648,6 +1940,18 @@ ipcMain.handle("settings:open-theme-assets-dir", async () => {
   return { status: "ok", path: dir };
 });
 ipcMain.handle("settings:preview-animation-override", (_event, payload) => _previewAnimationOverride(payload));
+ipcMain.handle("settings:open-mac-typing-privacy", async () => {
+  if (!isMac) return { status: "error", message: "mac typing privacy settings are only available on macOS" };
+  try {
+    await shell.openExternal(MAC_TYPING_PRIVACY_URL);
+    return { status: "ok" };
+  } catch (err) {
+    return { status: "error", message: err && err.message };
+  }
+});
+ipcMain.handle("settings:run-translator-health-check", () => runTranslatorHealthCheck());
+ipcMain.handle("settings:show-translate-bubble-test", (_event, mode) => showTranslateBubbleTest(mode));
+ipcMain.handle("settings:run-terminal-action-check", () => runTerminalActionCheck());
 
 // Static metadata for the Agents tab: name, eventSource, capabilities.
 // The renderer uses this (alongside the agents snapshot field) to render one
@@ -2049,7 +2353,7 @@ function createWindow() {
     // Crash recovery for hitWin
     hitWin.webContents.on("render-process-gone", (_event, details) => {
       console.error("hitWin renderer crashed:", details.reason);
-      hitWin.webContents.reload();
+      if (!hitWin.isDestroyed()) hitWin.webContents.reload();
     });
   }
 
@@ -2465,6 +2769,8 @@ if (!gotTheLock) {
     updateDebugLog = path.join(app.getPath("userData"), "update-debug.log");
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     createWindow();
+    syncMacTypingMonitorFromPrefs();
+    void maybePromptMacTypingPermission();
 
     // Register global shortcut for toggling pet visibility
     registerToggleShortcut();
@@ -2538,6 +2844,7 @@ if (!gotTheLock) {
     _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();
+    _macInputMonitor.stop();
     if (_codexMonitor) _codexMonitor.stop();
     if (_geminiMonitor) _geminiMonitor.stop();
     stopTopmostWatchdog();

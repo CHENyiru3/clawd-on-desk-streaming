@@ -1,84 +1,182 @@
-// src/translate.js — Bi-directional translation (EN↔中文) via MiniMax API
-// Quick translate: reads clipboard → calls MiniMax-M2.5 → auto-detects language
+"use strict";
 
 const { Anthropic } = require("@anthropic-ai/sdk");
 
+const MINIMAX_BASE_URL = "https://api.minimaxi.com/anthropic";
+const MINIMAX_MODEL = "MiniMax-M2.5";
+
 let _client = null;
-let _apiKey = null;
+let _clientApiKey = null;
+let _apiKeyOverride = null;
+let _clientFactory = (opts) => new Anthropic(opts);
+
+function resolveApiKey() {
+  const key = (_apiKeyOverride || process.env.MINIMAX_API_KEY || "").trim();
+  return key || null;
+}
 
 function getClient() {
-  const apiKey = process.env.MINIMAX_API_KEY || _apiKey;
+  const apiKey = resolveApiKey();
   if (!apiKey) return null;
-  if (!_client || _apiKey !== apiKey) {
-    _client = new Anthropic({
-      baseURL: "https://api.minimaxi.com/v1",
+  if (!_client || _clientApiKey !== apiKey) {
+    _client = _clientFactory({
+      baseURL: MINIMAX_BASE_URL,
       apiKey,
     });
-    _apiKey = apiKey;
+    _clientApiKey = apiKey;
   }
   return _client;
 }
 
 function setApiKey(apiKey) {
-  _apiKey = apiKey;
-  _client = null; // Force re-init on next call
+  _apiKeyOverride = typeof apiKey === "string" ? apiKey.trim() : "";
+  _client = null;
+  _clientApiKey = null;
 }
 
-/**
- * Detect whether text is primarily Chinese (CJK) or not.
- * Returns "zh" or "en".
- */
+function setClientFactoryForTests(factory) {
+  _clientFactory = typeof factory === "function" ? factory : ((opts) => new Anthropic(opts));
+  _client = null;
+  _clientApiKey = null;
+}
+
 function detectLang(text) {
   if (!text) return "en";
-  let cjk = 0, latin = 0;
+  let cjk = 0;
+  let latin = 0;
   for (const ch of text) {
     const cp = ch.codePointAt(0);
-    // CJK Unified Ideographs + Fullwidth Forms + Kangxi Radicals + common punctuation
-    if ((cp >= 0x4E00 && cp <= 0x9FFF) || (cp >= 0x3400 && cp <= 0x4DBF) ||
-        (cp >= 0xFF00 && cp <= 0xFFEF) || (cp >= 0x2F00 && cp <= 0x2FDF) ||
-        (cp >= 0x3000 && cp <= 0x303F)) {
+    if (
+      (cp >= 0x4E00 && cp <= 0x9FFF) ||
+      (cp >= 0x3400 && cp <= 0x4DBF) ||
+      (cp >= 0xFF00 && cp <= 0xFFEF) ||
+      (cp >= 0x2F00 && cp <= 0x2FDF) ||
+      (cp >= 0x3000 && cp <= 0x303F)
+    ) {
       cjk++;
-    } else if ((cp >= 0x0041 && cp <= 0x007A) || (cp >= 0x0030 && cp <= 0x0039)) {
+    } else if (
+      (cp >= 0x0041 && cp <= 0x007A) ||
+      (cp >= 0x0030 && cp <= 0x0039)
+    ) {
       latin++;
     }
   }
-  // If 30%+ of meaningful chars are CJK, treat as Chinese
   const total = cjk + latin;
   return total > 0 && cjk / total > 0.3 ? "zh" : "en";
 }
 
-/**
- * Translate text between English and Chinese.
- * Detects input language automatically and translates to the other language.
- * Returns { text, detectedLang } or throws on error.
- */
-async function translateText(text) {
+function createTranslatorError(code, userMessage, debugMessage) {
+  const err = new Error(userMessage);
+  err.code = code;
+  err.userMessage = userMessage;
+  err.debugMessage = debugMessage || userMessage;
+  return err;
+}
+
+function normalizeMiniMaxError(err) {
+  const message = String((err && (err.debugMessage || err.message)) || "").trim();
+  if (!resolveApiKey()) {
+    return createTranslatorError(
+      "missing_key",
+      "MiniMax API key is not configured.",
+      "MINIMAX_API_KEY not set"
+    );
+  }
+  if (err && typeof err.status === "number" && (err.status === 401 || err.status === 403)) {
+    return createTranslatorError("auth", "MiniMax rejected the API key.", message || `status ${err.status}`);
+  }
+  if (
+    /ECONN|ENOTFOUND|ETIMEDOUT|timeout|network|fetch failed|socket/i.test(message) ||
+    (err && typeof err.status === "number" && err.status >= 500)
+  ) {
+    return createTranslatorError(
+      "network",
+      "Could not reach MiniMax. Check your network and try again.",
+      message || "network failure"
+    );
+  }
+  if (err && err.code === "empty_result") {
+    return createTranslatorError("empty_result", "MiniMax returned no translated text.", message || "empty result");
+  }
+  if (message) {
+    return createTranslatorError("provider", "MiniMax returned an unexpected response.", message);
+  }
+  return createTranslatorError("unknown", "Translation failed.", "unknown MiniMax error");
+}
+
+function extractTranslatedText(message) {
+  const blocks = Array.isArray(message && message.content) ? message.content : [];
+  const translated = blocks
+    .filter((block) => block && block.type === "text" && typeof block.text === "string")
+    .map((block) => block.text)
+    .join("")
+    .trim();
+  if (!translated) {
+    throw createTranslatorError("empty_result", "MiniMax returned no translated text.", "message contained no text blocks");
+  }
+  return translated;
+}
+
+async function requestTranslation(text) {
   const client = getClient();
   if (!client) {
-    throw new Error("MINIMAX_API_KEY not set. Set it in your .env file or Settings.");
+    throw normalizeMiniMaxError(createTranslatorError("missing_key", "MiniMax API key is not configured.", "missing api key"));
   }
-
-  const detected = detectLang(text);
-  const isZh = detected === "zh";
-
-  const system = isZh
-    ? "You are a professional translator. Translate the user's Chinese text to English (Simplified English). Reply ONLY with the translation, no explanations, no quotes, no notes."
-    : "You are a professional translator. Translate the user's English text to Chinese (Simplified Chinese). Reply ONLY with the translation, no explanations, no quotes, no notes.";
-
-  const message = await client.messages.create({
-    model: "MiniMax-M2.5",
-    max_tokens: 1024,
-    system,
-    messages: [
-      {
-        role: "user",
-        content: [{ type: "text", text }],
-      },
-    ],
-  });
-
-  const textBlocks = message.content.filter((b) => b.type === "text");
-  const translated = textBlocks.map((b) => b.text).join("").trim();
-  return { text: translated, detectedLang: detected };
+  const detectedLang = detectLang(text);
+  const direction = detectedLang === "zh" ? "zh-en" : "en-zh";
+  const system = detectedLang === "zh"
+    ? "You are a professional translator. Translate the user's Chinese text to concise natural English. Reply only with the translation."
+    : "You are a professional translator. Translate the user's English text to concise natural Simplified Chinese. Reply only with the translation.";
+  try {
+    const message = await client.messages.create({
+      model: MINIMAX_MODEL,
+      max_tokens: 1024,
+      system,
+      messages: [
+        {
+          role: "user",
+          content: [{ type: "text", text }],
+        },
+      ],
+    });
+    return {
+      text: extractTranslatedText(message),
+      detectedLang,
+      direction,
+      provider: "minimax",
+    };
+  } catch (err) {
+    throw normalizeMiniMaxError(err);
+  }
 }
-module.exports = { translateText, setApiKey, getClient };
+
+async function translateText(text) {
+  return requestTranslation(String(text || ""));
+}
+
+async function checkTranslatorRuntime() {
+  const client = getClient();
+  if (!client) {
+    throw normalizeMiniMaxError(createTranslatorError("missing_key", "MiniMax API key is not configured.", "missing api key"));
+  }
+  const result = await requestTranslation("hello");
+  return {
+    backend: "minimax",
+    configured: true,
+    provider: result.provider,
+    direction: result.direction,
+  };
+}
+
+module.exports = {
+  MINIMAX_BASE_URL,
+  MINIMAX_MODEL,
+  getClient,
+  setApiKey,
+  setClientFactoryForTests,
+  detectLang,
+  translateText,
+  checkTranslatorRuntime,
+  normalizeMiniMaxError,
+  extractTranslatedText,
+};

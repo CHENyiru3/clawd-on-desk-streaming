@@ -27,8 +27,9 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 
 ### Animations & Interaction
 - **Real-time state awareness** — agent hooks and log polling drive Clawd's animations automatically
-- **12 animated states** — idle, thinking, typing, building, juggling, conducting, error, happy, notification, sweeping, carrying, sleeping
+- **13 animated states** — idle, composing, thinking, typing, building, juggling, conducting, error, happy, notification, sweeping, carrying, sleeping
 - **Eye tracking** — Clawd follows your cursor in idle state, with body lean and shadow stretch
+- **macOS typing awareness** — optional system-wide Input Monitoring lets Clawd react while you type before you even submit a prompt
 - **Sleep sequence** — yawning, dozing, collapsing, sleeping after 60s idle; mouse movement triggers a startled wake-up animation
 - **Click reactions** — double-click for a poke, 4 clicks for a flail
 - **Drag from any state** — grab Clawd anytime (Pointer Capture prevents fast-flick drops), release to resume

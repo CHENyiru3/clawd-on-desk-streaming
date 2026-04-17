@@ -9,6 +9,7 @@ const { AGENT_LAUNCHER_TRIGGER_LIST } = require("./prefs");
 
 const COMMAND_MAX = 256;
 const CWD_MAX = 4096;
+let _lastMacLauncherWindowRequested = false;
 
 function shouldFocusFallbackLaunch(trigger) {
   return trigger === "focusFallback" || trigger === "tripleAndFocus";
@@ -59,11 +60,37 @@ function tryMacOsascriptDoScript(appName, escapedInner) {
   execFileSync("osascript", ["-e", script], { stdio: "ignore", timeout: 15_000 });
 }
 
-function macLaunchTerminalDefault({ cwd, command }) {
+function tryReuseMacTerminalWindow(execFileSyncImpl = execFileSync) {
+  const script = `
+    tell application "Terminal"
+      if not running then return "not_running"
+      if (count of windows) is 0 then return "no_window"
+      reopen
+      activate
+      return "reused"
+    end tell`;
+  try {
+    const out = execFileSyncImpl("osascript", ["-e", script], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+      timeout: 15_000,
+    });
+    return String(out || "").trim() === "reused";
+  } catch {
+    return false;
+  }
+}
+
+function macLaunchTerminalDefault({ cwd, command, execFileSyncImpl = execFileSync }) {
+  if (_lastMacLauncherWindowRequested && tryReuseMacTerminalWindow(execFileSyncImpl)) {
+    return { ok: true, reused: true };
+  }
   const inner = `cd ${shellQuoteBash(cwd)} && ${command.trim()}`;
   const escapedInner = inner.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
   try {
-    tryMacOsascriptDoScript("Terminal", escapedInner);
+    const script = buildMacDoScript("Terminal", escapedInner);
+    execFileSyncImpl("osascript", ["-e", script], { stdio: "ignore", timeout: 15_000 });
+    _lastMacLauncherWindowRequested = true;
     return { ok: true };
   } catch (err) {
     return { ok: false, message: (err && err.message) || String(err) };
@@ -74,23 +101,23 @@ function macLaunchTerminalDefault({ cwd, command }) {
  * Spawn the default graphical terminal with `command` run inside `cwd` (best-effort per OS).
  * @returns {{ ok: true } | { ok: false, message: string }}
  */
-function launchAgentTerminal({ command, cwd: cwdRaw } = {}) {
+function launchAgentTerminal({ command, cwd: cwdRaw, _platform = process.platform, _execFileSync = execFileSync, _spawn = spawn } = {}) {
   const cmdErr = validateLauncherCommand(command);
   if (cmdErr) return { ok: false, message: cmdErr };
 
   const { cwd, err: cwdWarn } = resolveLauncherCwd(cwdRaw);
   if (cwdWarn) console.warn("Clawd: agent launcher cwd:", cwdWarn);
 
-  const platform = process.platform;
+  const platform = _platform;
   if (platform === "darwin") {
-    return macLaunchTerminalDefault({ cwd, command });
+    return macLaunchTerminalDefault({ cwd, command, execFileSyncImpl: _execFileSync });
   }
 
   if (platform === "win32") {
     const cwdWin = cwd.replace(/\//g, "\\");
     const args = ["/c", "start", "", "/D", cwdWin, "cmd", "/k", command.trim()];
     try {
-      const child = spawn("cmd.exe", args, {
+      const child = _spawn("cmd.exe", args, {
         detached: true,
         stdio: "ignore",
         windowsHide: true,
@@ -115,7 +142,7 @@ function launchAgentTerminal({ command, cwd: cwdRaw } = {}) {
     const which = spawnWhichSync(bin);
     if (!which) continue;
     try {
-      const child = spawn(which, args, {
+      const child = _spawn(which, args, {
         detached: true,
         stdio: "ignore",
       });
@@ -192,4 +219,7 @@ module.exports = {
   validateAgentLauncherUpdate,
   shouldFocusFallbackLaunch,
   shouldTripleClickLaunch,
+  _resetMacLauncherStateForTests() {
+    _lastMacLauncherWindowRequested = false;
+  },
 };

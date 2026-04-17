@@ -85,6 +85,24 @@ module.exports = function initMenu(ctx) {
     return items;
   }
 
+  function buildDiagnosticsSubmenu() {
+    const items = [
+      { label: t("testTranslator"), click: () => ctx.runTranslatorHealthCheck && ctx.runTranslatorHealthCheck() },
+      {
+        label: t("showTranslationBubble"),
+        submenu: [
+          { label: t("bubbleLoading"), click: () => ctx.showTranslateBubbleTest && ctx.showTranslateBubbleTest("loading") },
+          { label: t("bubbleSuccess"), click: () => ctx.showTranslateBubbleTest && ctx.showTranslateBubbleTest("success") },
+          { label: t("bubbleError"), click: () => ctx.showTranslateBubbleTest && ctx.showTranslateBubbleTest("error") },
+        ],
+      },
+    ];
+    if (isMac) {
+      items.push({ label: t("testTerminalFocus"), click: () => ctx.runTerminalActionCheck && ctx.runTerminalActionCheck() });
+    }
+    return items;
+  }
+
   // ── System tray ──
   function createTray() {
     if (ctx.tray) return;
@@ -164,6 +182,11 @@ module.exports = function initMenu(ctx) {
       {
         label: t("theme"),
         submenu: buildThemeSubmenu(),
+      },
+      { type: "separator" },
+      {
+        label: t("diagnostics"),
+        submenu: buildDiagnosticsSubmenu(),
       },
       { type: "separator" },
       {
@@ -469,6 +492,11 @@ module.exports = function initMenu(ctx) {
         label: t("theme"),
         submenu: buildThemeSubmenu(),
       },
+      { type: "separator" },
+      {
+        label: t("diagnostics"),
+        submenu: buildDiagnosticsSubmenu(),
+      },
     ];
     // macOS: Dock and Menu Bar visibility toggles
     if (isMac) {
@@ -546,4 +574,3 @@ module.exports = function initMenu(ctx) {
     requestAppQuit,
   };
 };
-

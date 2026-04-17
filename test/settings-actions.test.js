@@ -79,11 +79,21 @@ describe("updateRegistry pure-data validators", () => {
     for (const key of [
       "soundMuted", "bubbleFollowPet", "hideBubbles",
       "showSessionId", "miniMode", "openAtLoginHydrated",
+      "macTypingAwarenessEnabled", "macTypingPermissionPrompted", "macTypingPermissionDismissed",
     ]) {
       assert.strictEqual(updateRegistry[key](true, deps).status, "ok", `${key}(true)`);
       assert.strictEqual(updateRegistry[key](false, deps).status, "ok", `${key}(false)`);
       assert.strictEqual(updateRegistry[key]("yes", deps).status, "error", `${key}("yes")`);
     }
+  });
+
+  it("translateProvider and translateApiKey validate correctly", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.translateProvider("minimax", deps).status, "ok");
+    assert.strictEqual(updateRegistry.translateProvider("googletrans", deps).status, "error");
+    assert.strictEqual(updateRegistry.translateApiKey("", deps).status, "ok");
+    assert.strictEqual(updateRegistry.translateApiKey("secret", deps).status, "ok");
+    assert.strictEqual(updateRegistry.translateApiKey(123, deps).status, "error");
   });
 
   it("object-form boolean fields validate via entry.validate", () => {

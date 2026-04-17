@@ -167,6 +167,27 @@ describe("resolveDisplayState()", () => {
     assert.strictEqual(api.resolveDisplayState(), "sweeping");
     api.setUpdateVisualState(null);
   });
+
+  it("composing overlay wins over idle", () => {
+    api.setComposingActive(true);
+    assert.strictEqual(api.resolveDisplayState(), "composing");
+  });
+
+  it("composing overlay does not override thinking or working", () => {
+    api.sessions.set("s1", rawSession("thinking"));
+    api.setComposingActive(true);
+    assert.strictEqual(api.resolveDisplayState(), "thinking");
+
+    api.sessions.set("s1", rawSession("working"));
+    assert.strictEqual(api.resolveDisplayState(), "working");
+  });
+
+  it("composing overlay is suppressed during DND", () => {
+    const dndApi = require("../src/state")(makeCtx({ doNotDisturb: true }));
+    dndApi.setComposingActive(true);
+    assert.strictEqual(dndApi.resolveDisplayState(), "idle");
+    dndApi.cleanup();
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -243,6 +264,19 @@ describe("setState() debounce", () => {
     api.setState("yawning");
     assert.strictEqual(api.getCurrentState(), "dozing");
   });
+
+  it("composing transitions in and out around idle", () => {
+    api.setComposingActive(true);
+    assert.strictEqual(api.getCurrentState(), "composing");
+    api.setComposingActive(false);
+    assert.strictEqual(api.getCurrentState(), "idle");
+  });
+
+  it("composing does not wake deep sleep", () => {
+    api.applyState("sleeping");
+    api.setComposingActive(true);
+    assert.strictEqual(api.getCurrentState(), "sleeping");
+  });
 });
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -257,6 +291,10 @@ describe("working sub-animations", () => {
   it("1 working session → typing SVG", () => {
     api.sessions.set("s1", rawSession("working"));
     assert.strictEqual(api.getSvgOverride("working"), "clawd-working-typing.svg");
+  });
+
+  it("composing falls back to thinking SVG when theme has no composing asset", () => {
+    assert.strictEqual(api.getSvgOverride("composing"), "clawd-working-thinking.svg");
   });
 
   it("2 working sessions → juggling SVG", () => {

@@ -255,7 +255,7 @@ function showLoading(sourceText, lang, direction) {
   reveal();
 }
 
-function showResult(sourceText, translatedText, lang, direction) {
+function showResult(sourceText, translatedText, lang, direction, diagnostic) {
   clearTimeout(autoTimer);
   const uiLang = (lang === "zh") ? "zh" : "en";
   titleEl.textContent = STRINGS[uiLang].title;
@@ -273,6 +273,9 @@ function showResult(sourceText, translatedText, lang, direction) {
     : sourceText;
   resultBlock.textContent = translatedText;
 
+  footer.textContent = diagnostic && diagnostic.source === "test"
+    ? (diagnostic.label || "Diagnostic")
+    : "Ctrl+Shift+T";
   reveal();
 
   // Auto-dismiss after 12s
@@ -281,7 +284,7 @@ function showResult(sourceText, translatedText, lang, direction) {
   }, 12000);
 }
 
-function showError(sourceText, errorMsg, lang) {
+function showError(sourceText, errorMsg, lang, diagnostic) {
   clearTimeout(autoTimer);
   const uiLang = (lang === "zh") ? "zh" : "en";
   titleEl.textContent = STRINGS[uiLang].title;
@@ -290,8 +293,11 @@ function showError(sourceText, errorMsg, lang) {
   sourceBlock.style.display = "none";
   resultBlock.style.display = "none";
   errorBlock.style.display = "";
-  footer.style.display = "none";
+  footer.style.display = diagnostic && diagnostic.source === "test" ? "" : "none";
   errorBlock.textContent = errorMsg || STRINGS[uiLang].error;
+  if (footer.style.display !== "none") {
+    footer.textContent = diagnostic.label || "Diagnostic";
+  }
   reveal();
 
   // Auto-dismiss after 5s on error
@@ -309,9 +315,9 @@ window.translateAPI.onShow((data) => {
   if (data.status === "loading") {
     showLoading(data.sourceText, data.lang, data.direction);
   } else if (data.status === "done") {
-    showResult(data.sourceText, data.translatedText, data.lang, data.direction);
+    showResult(data.sourceText, data.translatedText, data.lang, data.direction, data.diagnostic);
   } else if (data.status === "error") {
-    showError(data.sourceText, data.errorMessage, data.lang);
+    showError(data.sourceText, data.errorMessage, data.lang, data.diagnostic);
   }
 });
 </script>

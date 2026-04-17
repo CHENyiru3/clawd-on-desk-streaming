@@ -27,6 +27,8 @@ const STRINGS = {
     sidebarAbout: "About",
     sidebarSoon: "Soon",
     sectionAppearance: "Appearance",
+    sectionTranslation: "Translation",
+    sectionDiagnostics: "Diagnostics",
     sectionStartup: "Startup",
     sectionBubbles: "Bubbles",
     agentsTitle: "Agents",
@@ -57,6 +59,29 @@ const STRINGS = {
     rowLanguageDesc: "Interface language for menus and bubbles.",
     rowSound: "Sound effects",
     rowSoundDesc: "Play a chime when Clawd finishes a task or asks for input.",
+    rowTranslateApiKey: "MiniMax API key",
+    rowTranslateApiKeyDesc: "Used for Ctrl+Shift+T clipboard translation and translator diagnostics.",
+    rowTranslatorBackend: "Translator backend",
+    rowTranslatorBackendDesc: "MiniMax",
+    rowTranslatorStatus: "Translator status",
+    rowTranslatorStatusConfigured: "Configured",
+    rowTranslatorStatusMissing: "Not configured",
+    rowTranslatorHealthUnknown: "Health unknown",
+    rowTranslatorHealthOk: "Health OK",
+    rowTranslatorHealthError: "Health error",
+    rowTranslatorLastErrorNone: "No recent errors.",
+    rowTerminalStatus: "Terminal action check",
+    rowTerminalStatusDesc: "Verify focus and position behavior for tracked terminal windows.",
+    rowTerminalStatusUnsupported: "This check is only available on macOS.",
+    rowTerminalStatusUnknown: "No checks run yet.",
+    rowTerminalStatusOk: "Last check succeeded.",
+    rowTerminalStatusError: "Last check failed.",
+    actionTestTranslator: "Test Translator",
+    actionShowBubbleLoading: "Show Bubble: Loading",
+    actionShowBubbleSuccess: "Show Bubble: Success",
+    actionShowBubbleError: "Show Bubble: Error",
+    actionTestTerminalFocus: "Test Terminal Focus & Position",
+    toastActionOk: "Done.",
     rowOpenAtLogin: "Open at login",
     rowOpenAtLoginDesc: "Start Clawd automatically when you log in.",
     rowManageClaudeHooks: "Manage Claude hooks automatically",
@@ -72,6 +97,14 @@ const STRINGS = {
     rowHideBubblesDesc: "Suppress permission, notification, and update bubbles entirely.",
     rowShowSessionId: "Show session ID",
     rowShowSessionIdDesc: "Append the short session ID to bubble headers and the Sessions menu.",
+    rowMacTypingAwareness: "Typing awareness (macOS)",
+    rowMacTypingAwarenessDesc: "Let Clawd react while you type anywhere on your Mac. Requires Input Monitoring.",
+    rowMacTypingAwarenessUnsupported: "This feature is only available on macOS.",
+    rowMacTypingStatusGranted: "Permission granted.",
+    rowMacTypingStatusDenied: "Input Monitoring not granted yet.",
+    rowMacTypingStatusUnavailable: "Permission status unavailable on this system.",
+    rowMacTypingStatusError: "Permission check failed. Try reopening System Settings.",
+    actionOpenMacTypingPrivacy: "Open Settings",
     placeholderTitle: "Coming soon",
     placeholderDesc: "This panel will land in a future Clawd release. The plan lives in docs/plan-settings-panel.md.",
     toastSaveFailed: "Couldn't save: ",
@@ -166,6 +199,8 @@ const STRINGS = {
     sidebarAbout: "关于",
     sidebarSoon: "待推出",
     sectionAppearance: "外观",
+    sectionTranslation: "翻译",
+    sectionDiagnostics: "诊断",
     sectionStartup: "启动",
     sectionBubbles: "气泡",
     agentsTitle: "Agent 管理",
@@ -195,6 +230,29 @@ const STRINGS = {
     rowLanguageDesc: "菜单和气泡的界面语言。",
     rowSound: "音效",
     rowSoundDesc: "Clawd 完成任务或需要输入时播放提示音。",
+    rowTranslateApiKey: "MiniMax API key",
+    rowTranslateApiKeyDesc: "用于 Ctrl+Shift+T 剪贴板翻译和翻译诊断。",
+    rowTranslatorBackend: "翻译后端",
+    rowTranslatorBackendDesc: "MiniMax",
+    rowTranslatorStatus: "翻译状态",
+    rowTranslatorStatusConfigured: "已配置",
+    rowTranslatorStatusMissing: "未配置",
+    rowTranslatorHealthUnknown: "健康状态未知",
+    rowTranslatorHealthOk: "健康状态正常",
+    rowTranslatorHealthError: "健康状态异常",
+    rowTranslatorLastErrorNone: "最近没有错误。",
+    rowTerminalStatus: "终端动作检查",
+    rowTerminalStatusDesc: "检查已追踪终端窗口的聚焦和定位行为。",
+    rowTerminalStatusUnsupported: "此检查目前仅在 macOS 上可用。",
+    rowTerminalStatusUnknown: "尚未运行检查。",
+    rowTerminalStatusOk: "最近一次检查成功。",
+    rowTerminalStatusError: "最近一次检查失败。",
+    actionTestTranslator: "测试翻译",
+    actionShowBubbleLoading: "显示气泡：加载中",
+    actionShowBubbleSuccess: "显示气泡：成功",
+    actionShowBubbleError: "显示气泡：错误",
+    actionTestTerminalFocus: "测试终端聚焦和定位",
+    toastActionOk: "已完成。",
     rowOpenAtLogin: "开机自启",
     rowOpenAtLoginDesc: "登录系统时自动启动 Clawd。",
     rowManageClaudeHooks: "自动管理 Claude hooks",
@@ -210,6 +268,14 @@ const STRINGS = {
     rowHideBubblesDesc: "完全屏蔽权限、通知和更新气泡。",
     rowShowSessionId: "显示会话 ID",
     rowShowSessionIdDesc: "在气泡标题和会话菜单后追加短会话 ID。",
+    rowMacTypingAwareness: "打字感知（macOS）",
+    rowMacTypingAwarenessDesc: "让 Clawd 在你输入时做出反应。需要“输入监控”权限。",
+    rowMacTypingAwarenessUnsupported: "此功能仅在 macOS 上可用。",
+    rowMacTypingStatusGranted: "权限已授予。",
+    rowMacTypingStatusDenied: "尚未授予“输入监控”权限。",
+    rowMacTypingStatusUnavailable: "当前系统无法读取权限状态。",
+    rowMacTypingStatusError: "权限检查失败，请尝试重新打开系统设置。",
+    actionOpenMacTypingPrivacy: "打开设置",
     placeholderTitle: "即将推出",
     placeholderDesc: "此面板将在 Clawd 后续版本中加入，规划见 docs/plan-settings-panel.md。",
     toastSaveFailed: "保存失败：",
@@ -1841,6 +1907,12 @@ function renderGeneralTab(parent) {
       // soundMuted is inverse: ON-switch means sound enabled.
       invert: true,
     }),
+    buildMacTypingAwarenessRow(),
+  ]));
+
+  parent.appendChild(buildSection(t("sectionTranslation"), [
+    buildTranslatorApiKeyRow(),
+    buildTranslatorStatusRow(),
   ]));
 
   // Section: Startup
@@ -1889,6 +1961,176 @@ function renderGeneralTab(parent) {
       descKey: "rowShowSessionIdDesc",
     }),
   ]));
+
+  parent.appendChild(buildSection(t("sectionDiagnostics"), [
+    buildTranslatorDiagnosticsRow(),
+    buildTerminalDiagnosticsRow(),
+  ]));
+}
+
+function getMacTypingStatusDescKey() {
+  const status = snapshot && snapshot.macTypingPermissionStatus;
+  if (status === "granted") return "rowMacTypingStatusGranted";
+  if (status === "denied") return "rowMacTypingStatusDenied";
+  if (status === "error") return "rowMacTypingStatusError";
+  return "rowMacTypingStatusUnavailable";
+}
+
+function buildMacTypingAwarenessRow() {
+  const unsupported = (snapshot && snapshot.macTypingPermissionStatus) === "unsupported";
+  return buildSwitchRow({
+    key: "macTypingAwarenessEnabled",
+    labelKey: "rowMacTypingAwareness",
+    descKey: "rowMacTypingAwarenessDesc",
+    descExtraKey: unsupported ? "rowMacTypingAwarenessUnsupported" : getMacTypingStatusDescKey(),
+    disabled: unsupported,
+    actionButton: unsupported ? null : {
+      labelKey: "actionOpenMacTypingPrivacy",
+      invoke: () => window.settingsAPI.openMacTypingPrivacy(),
+    },
+  });
+}
+
+function buildTranslatorApiKeyRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTranslateApiKey"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowTranslateApiKeyDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.minWidth = "260px";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.className = "soft-input";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "sk-...";
+  input.value = String((snapshot && snapshot.translateApiKey) || "");
+  input.style.minWidth = "220px";
+  input.style.flex = "1";
+  input.addEventListener("blur", () => {
+    Promise.resolve(window.settingsAPI.update("translateApiKey", input.value)).then((result) => {
+      if (!result || result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastSaveFailed") + msg, { error: true });
+        input.value = String((snapshot && snapshot.translateApiKey) || "");
+      }
+    });
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function getTranslatorHealthLabel() {
+  const health = snapshot && snapshot.translatorStatus && snapshot.translatorStatus.health;
+  if (health === "ok") return t("rowTranslatorHealthOk");
+  if (health === "error") return t("rowTranslatorHealthError");
+  return t("rowTranslatorHealthUnknown");
+}
+
+function buildTranslatorStatusRow() {
+  const translator = snapshot && snapshot.translatorStatus;
+  const row = document.createElement("div");
+  row.className = "row";
+  const statusLine = translator && translator.configured
+    ? `${t("rowTranslatorStatusConfigured")} · ${getTranslatorHealthLabel()}`
+    : `${t("rowTranslatorStatusMissing")} · ${getTranslatorHealthLabel()}`;
+  const lastError = translator && translator.lastError ? translator.lastError : t("rowTranslatorLastErrorNone");
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTranslatorStatus"))}</span>` +
+      `<span class="row-desc">${escapeHtml(statusLine)}</span>` +
+      `<span class="row-desc">${escapeHtml(lastError)}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const backend = document.createElement("span");
+  backend.className = "row-desc";
+  backend.textContent = `${t("rowTranslatorBackend")}: ${t("rowTranslatorBackendDesc")}`;
+  ctrl.appendChild(backend);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function runSettingsAction(invoker) {
+  return Promise.resolve(invoker()).then((result) => {
+    if (result && result.status === "ok" && result.message) {
+      showToast(result.message || t("toastActionOk"));
+    }
+    return result;
+  });
+}
+
+function buildActionButton(labelKey, invoke) {
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "soft-btn accent";
+  btn.textContent = t(labelKey);
+  attachActivation(btn, () => runSettingsAction(invoke));
+  return btn;
+}
+
+function buildTranslatorDiagnosticsRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTranslatorBackend"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowTranslatorBackendDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.gap = "8px";
+  ctrl.style.flexWrap = "wrap";
+  ctrl.appendChild(buildActionButton("actionTestTranslator", () => window.settingsAPI.runTranslatorHealthCheck()));
+  ctrl.appendChild(buildActionButton("actionShowBubbleLoading", () => window.settingsAPI.showTranslateBubbleTest("loading")));
+  ctrl.appendChild(buildActionButton("actionShowBubbleSuccess", () => window.settingsAPI.showTranslateBubbleTest("success")));
+  ctrl.appendChild(buildActionButton("actionShowBubbleError", () => window.settingsAPI.showTranslateBubbleTest("error")));
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildTerminalDiagnosticsRow() {
+  const terminal = snapshot && snapshot.terminalDiagnosticsStatus;
+  const supported = !!(terminal && terminal.supported);
+  const statusText = !supported
+    ? t("rowTerminalStatusUnsupported")
+    : terminal && terminal.lastResult === "ok"
+      ? t("rowTerminalStatusOk")
+      : terminal && terminal.lastResult === "error"
+        ? t("rowTerminalStatusError")
+        : t("rowTerminalStatusUnknown");
+  const detailText = terminal && terminal.lastError
+    ? terminal.lastError
+    : terminal && terminal.lastTargetLabel
+      ? terminal.lastTargetLabel
+      : t("rowTerminalStatusDesc");
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTerminalStatus"))}</span>` +
+      `<span class="row-desc">${escapeHtml(statusText)}</span>` +
+      `<span class="row-desc">${escapeHtml(detailText)}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "soft-btn accent";
+  btn.textContent = t("actionTestTerminalFocus");
+  if (!supported) {
+    btn.disabled = true;
+  } else {
+    attachActivation(btn, () => runSettingsAction(() => window.settingsAPI.runTerminalActionCheck()));
+  }
+  ctrl.appendChild(btn);
+  row.appendChild(ctrl);
+  return row;
 }
 
 function buildSection(title, rows) {

@@ -202,6 +202,16 @@ const updateRegistry = {
   bubbleFollowPet: requireBoolean("bubbleFollowPet"),
   hideBubbles: requireBoolean("hideBubbles"),
   showSessionId: requireBoolean("showSessionId"),
+  translateProvider: requireEnum("translateProvider", ["minimax"]),
+  translateApiKey(value) {
+    if (typeof value !== "string") {
+      return { status: "error", message: "translateApiKey must be a string" };
+    }
+    return { status: "ok" };
+  },
+  macTypingAwarenessEnabled: requireBoolean("macTypingAwarenessEnabled"),
+  macTypingPermissionPrompted: requireBoolean("macTypingPermissionPrompted"),
+  macTypingPermissionDismissed: requireBoolean("macTypingPermissionDismissed"),
 
   // ── System-backed prefs (object-form: validate + effect pre-commit gate) ──
   //

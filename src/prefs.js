@@ -64,6 +64,15 @@ const SCHEMA = {
   hideBubbles: { type: "boolean", default: false },
   showSessionId: { type: "boolean", default: false },
   soundMuted: { type: "boolean", default: false },
+  translateProvider: { type: "string", default: "minimax", enum: ["minimax"] },
+  translateApiKey: {
+    type: "string",
+    default: "",
+    normalize: (v) => (typeof v === "string" ? v.trim() : ""),
+  },
+  macTypingAwarenessEnabled: { type: "boolean", default: process.platform === "darwin" },
+  macTypingPermissionPrompted: { type: "boolean", default: false },
+  macTypingPermissionDismissed: { type: "boolean", default: false },
   // Theme
   theme: { type: "string", default: "clawd" },
   // Phase 2/3 placeholders — schema reserves the keys so future migrations don't need v2.
@@ -144,6 +153,9 @@ function validate(raw) {
     if (!(key in raw)) continue;
     const field = SCHEMA[key];
     let value = raw[key];
+    if (typeof field.normalize === "function" && field.type !== "object") {
+      value = field.normalize(value, out[key]);
+    }
     if (field.type === "object" && typeof field.normalize === "function") {
       value = field.normalize(value, out[key]);
     }

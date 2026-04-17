@@ -115,6 +115,7 @@ These are common optional states you can add when you want distinct visuals for 
 
 | State | When | Notes |
 |-------|------|-------|
+| `composing` | macOS keyboard activity before prompt submit | Optional. If omitted, Clawd falls back to `thinking` |
 | `yawning` | Sleep sequence start | |
 | `dozing` | After yawning | Use SVG only if `dozing` is listed in `eyeTracking.states` |
 | `collapsing` | Falling asleep | |

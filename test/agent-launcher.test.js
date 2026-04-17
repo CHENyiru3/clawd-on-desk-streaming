@@ -4,11 +4,74 @@ const { describe, it } = require("node:test");
 const assert = require("node:assert");
 
 const {
+  launchAgentTerminal,
   validateLauncherCommand,
   validateAgentLauncherUpdate,
   shouldFocusFallbackLaunch,
   shouldTripleClickLaunch,
+  _resetMacLauncherStateForTests,
 } = require("../src/agent-launcher");
+
+describe("agent-launcher macOS reuse behavior", () => {
+  it("reuses the previous Terminal window when it is still open", () => {
+    _resetMacLauncherStateForTests();
+    const calls = [];
+    const execFileSyncImpl = (_bin, args, opts) => {
+      calls.push({ args, opts });
+      if (calls.length === 1) return "";
+      return "reused\n";
+    };
+
+    const first = launchAgentTerminal({
+      command: "claude",
+      cwd: "",
+      _platform: "darwin",
+      _execFileSync: execFileSyncImpl,
+    });
+    const second = launchAgentTerminal({
+      command: "claude",
+      cwd: "",
+      _platform: "darwin",
+      _execFileSync: execFileSyncImpl,
+    });
+
+    assert.deepStrictEqual(first, { ok: true });
+    assert.deepStrictEqual(second, { ok: true, reused: true });
+    assert.strictEqual(calls.length, 2);
+    assert.match(calls[1].args[1], /count of windows/);
+  });
+
+  it("falls back to opening a new Terminal window when the previous one was closed", () => {
+    _resetMacLauncherStateForTests();
+    let reuseChecks = 0;
+    const calls = [];
+    const execFileSyncImpl = (_bin, args) => {
+      calls.push(args);
+      if (args[1].includes("count of windows")) {
+        reuseChecks++;
+        return "no_window\n";
+      }
+      return "";
+    };
+
+    launchAgentTerminal({
+      command: "claude",
+      cwd: "",
+      _platform: "darwin",
+      _execFileSync: execFileSyncImpl,
+    });
+    const second = launchAgentTerminal({
+      command: "claude",
+      cwd: "",
+      _platform: "darwin",
+      _execFileSync: execFileSyncImpl,
+    });
+
+    assert.deepStrictEqual(second, { ok: true });
+    assert.strictEqual(reuseChecks, 1);
+    assert.strictEqual(calls.length, 3);
+  });
+});
 
 describe("agent-launcher.validateLauncherCommand", () => {
   it("accepts simple commands", () => {
