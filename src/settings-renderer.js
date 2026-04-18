@@ -128,13 +128,13 @@ const STRINGS = {
     actionTestGlobalReading: "Test Reading",
     actionTestGlobalListening: "Test Listening",
     rowTimeCheckinEnabled: "Enable scheduled check-ins",
-    rowTimeCheckinEnabledDesc: "Generate a warm check-in every 2 hours using sanitized clipboard history from the past hour.",
+    rowTimeCheckinEnabledDesc: "Generate a warm time-aware check-in every 2 hours, using the past hour of sanitized clipboard history as the main evidence.",
     rowTimeCheckinSchedule: "Schedule",
     rowTimeCheckinScheduleDesc: "Every 2 hours, with key checkpoints at 10:00 AM, 5:00 PM, and 11:00 PM.",
     rowTimeCheckinWindow: "Clipboard window (minutes)",
     rowTimeCheckinWindowDesc: "How much recent clipboard history to summarize for each check-in.",
     rowTimeCheckinGeneratorCwd: "Generator working directory",
-    rowTimeCheckinGeneratorCwdDesc: "The folder used when running the Hermes resume command.",
+    rowTimeCheckinGeneratorCwdDesc: "The folder used when running the resumed Hermes session for tone continuity.",
     rowTimeCheckinGeneratorCommand: "Generator command",
     rowTimeCheckinGeneratorCommandDesc: "Executable used for scheduled check-ins.",
     rowTimeCheckinGeneratorArgs: "Generator args",
@@ -144,6 +144,8 @@ const STRINGS = {
     rowTimeCheckinStatus: "Check-in status",
     rowTimeCheckinStatusIdle: "No check-ins have run yet.",
     rowTimeCheckinStatusOk: "Last check-in completed.",
+    rowTimeCheckinStatusCleaned: "Last check-in was cleaned before display.",
+    rowTimeCheckinStatusFallback: "Last check-in used a local fallback.",
     rowTimeCheckinStatusError: "Last check-in used a fallback or failed.",
     actionRunTimeCheckinNow: "Run Time Check-in Now",
     actionPreviewTimeCheckinContext: "Preview Sanitized Context",
@@ -341,13 +343,13 @@ const STRINGS = {
     actionTestGlobalReading: "测试阅读",
     actionTestGlobalListening: "测试聆听",
     rowTimeCheckinEnabled: "启用定时问候",
-    rowTimeCheckinEnabledDesc: "每 2 小时根据过去 1 小时的脱敏剪贴板历史生成一条温和同事风格的问候。",
+    rowTimeCheckinEnabledDesc: "每 2 小时生成一条带时间感的温和问候，并以前 1 小时的脱敏剪贴板历史作为主要依据。",
     rowTimeCheckinSchedule: "时间表",
     rowTimeCheckinScheduleDesc: "每 2 小时一次，并包含 10:00、17:00、23:00 这些关键时点。",
     rowTimeCheckinWindow: "剪贴板窗口（分钟）",
     rowTimeCheckinWindowDesc: "每次问候会总结多少分钟内的剪贴板历史。",
     rowTimeCheckinGeneratorCwd: "生成器工作目录",
-    rowTimeCheckinGeneratorCwdDesc: "运行 Hermes resume 命令时使用的目录。",
+    rowTimeCheckinGeneratorCwdDesc: "运行恢复的 Hermes 会话以保持语气连续性时使用的目录。",
     rowTimeCheckinGeneratorCommand: "生成器命令",
     rowTimeCheckinGeneratorCommandDesc: "用于定时问候的可执行命令。",
     rowTimeCheckinGeneratorArgs: "生成器参数",
@@ -357,6 +359,8 @@ const STRINGS = {
     rowTimeCheckinStatus: "问候状态",
     rowTimeCheckinStatusIdle: "尚未运行过问候。",
     rowTimeCheckinStatusOk: "上一次问候已完成。",
+    rowTimeCheckinStatusCleaned: "上一次问候在显示前经过清洗。",
+    rowTimeCheckinStatusFallback: "上一次问候使用了本地回退消息。",
     rowTimeCheckinStatusError: "上一次问候使用了回退消息或失败。",
     actionRunTimeCheckinNow: "立即运行时间问候",
     actionPreviewTimeCheckinContext: "预览脱敏上下文",
@@ -2470,6 +2474,8 @@ function buildTimeCheckinStatusRow() {
   const status = snapshot && snapshot.timeCheckinStatus;
   let stateText = t("rowTimeCheckinStatusIdle");
   if (status && status.lastResult === "ok") stateText = t("rowTimeCheckinStatusOk");
+  else if (status && status.lastResult === "cleaned") stateText = t("rowTimeCheckinStatusCleaned");
+  else if (status && status.lastResult === "fallback") stateText = t("rowTimeCheckinStatusFallback");
   else if (status && status.lastResult === "error") stateText = t("rowTimeCheckinStatusError");
   const detailBits = [];
   if (status && status.nextRunAt) detailBits.push(`Next: ${new Date(status.nextRunAt).toLocaleString()}`);

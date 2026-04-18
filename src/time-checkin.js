@@ -59,10 +59,10 @@ module.exports = function createTimeCheckinRuntime(options = {}) {
       if (result && result.detail) {
         onCheckinReady(result.detail);
       }
-      if (result && result.status === "ok") {
+      if (result && result.status && result.status !== "error") {
         status = {
           ...status,
-          lastResult: "ok",
+          lastResult: result.status,
           lastError: null,
         };
       } else {

@@ -19,6 +19,7 @@ const createClipboardHistory = require("./clipboard-history");
 const { sanitizeClipboardText } = require("./clipboard-sanitizer");
 const createTimeCheckinRuntime = require("./time-checkin");
 const { runHermesCheckin, formatClockLabel } = require("./hermes-checkin");
+const initTimeCheckinBubble = require("./time-checkin-bubble");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -225,6 +226,7 @@ const _clipboardHistory = createClipboardHistory({
 });
 
 let _timeCheckinRuntime = null;
+let _timeCheckinBubble = null;
 
 function getTimeCheckinContext(windowMinutes = null) {
   const minutes = Number.isInteger(windowMinutes) && windowMinutes > 0
@@ -248,22 +250,17 @@ function buildTimeCheckinTitle(nowDate) {
 }
 
 function buildTimeCheckinBubblePayload(nowDate, message) {
+  const clockLabel = formatClockLabel(nowDate);
+  const match = /^(\d{1,2}:\d{2})\s*([AP]M)$/i.exec(clockLabel);
   return {
-    mode: "time-checkin",
-    lang: getUiLang(),
-    title: buildTimeCheckinTitle(nowDate),
+    timeLabel: match ? match[1] : clockLabel,
+    meridiem: match ? match[2].toUpperCase() : "",
+    title: getUiLang() === "zh" ? "整点问候" : "Check-in",
     message,
     detail: getUiLang() === "zh"
       ? "基于过去一小时的脱敏剪贴板活动。"
       : "Based on sanitized clipboard activity from the past hour.",
-    actions: [
-      {
-        id: "dismiss",
-        label: getUiLang() === "zh" ? "关闭" : "Dismiss",
-        variant: "secondary",
-      },
-    ],
-    defaultAction: "dismiss",
+    dismissLabel: getUiLang() === "zh" ? "关闭" : "Dismiss",
     requireAction: false,
   };
 }
@@ -277,19 +274,20 @@ async function generateTimeCheckinMessage({ reason, now }) {
     slotLabel: buildTimeCheckinTitle(now),
     logger: (msg) => console.warn("Clawd:", msg),
   });
-  const message = result.ok ? result.text : result.fallbackMessage;
+  const message = (result.ok && result.cleanedText) ? result.cleanedText : (result.fallbackMessage || "Take a breath. One clean next step is enough.");
+  const generatorStatus = result.ok ? (result.cleanedChanged ? "cleaned" : "ok") : "fallback";
   timeCheckinStatus = {
     ...timeCheckinStatus,
     enabled: !!_settingsController.get("timeCheckinEnabled"),
     lastRunAt: now.getTime(),
-    lastResult: result.ok ? "ok" : "error",
+    lastResult: generatorStatus,
     lastError: result.ok ? null : (result.message || "Time check-in failed."),
     lastMessagePreview: message,
   };
   _settingsController.applyUpdate("timeCheckinLastRunAt", now.getTime());
   broadcastSettingsSnapshot();
   return {
-    status: result.ok ? "ok" : "error",
+    status: generatorStatus,
     detail: {
       payload: buildTimeCheckinBubblePayload(now, message),
       message,
@@ -312,7 +310,7 @@ function handleTimeCheckinReady(detail) {
     broadcastSettingsSnapshot();
     return;
   }
-  showUpdateBubble(detail.payload);
+  if (_timeCheckinBubble) _timeCheckinBubble.show(detail.payload);
 }
 
 function syncTimeCheckinFromPrefs() {
@@ -1153,24 +1151,19 @@ function previewTimeCheckinContext() {
     "",
     ...lines,
   ].join("\n");
-  showUpdateBubble({
-    mode: "time-checkin",
-    lang: getUiLang(),
-    title: getUiLang() === "zh" ? "脱敏上下文预览" : "Sanitized Context Preview",
-    message: getUiLang() === "zh"
-      ? "这是发送给时间问候生成器前的脱敏剪贴板内容。"
-      : "This is the sanitized clipboard context before it goes to the time check-in generator.",
-    detail,
-    actions: [
-      {
-        id: "dismiss",
-        label: getUiLang() === "zh" ? "关闭" : "Dismiss",
-        variant: "secondary",
-      },
-    ],
-    defaultAction: "dismiss",
-    requireAction: false,
-  });
+  if (_timeCheckinBubble) {
+    _timeCheckinBubble.show({
+      timeLabel: getUiLang() === "zh" ? "预览" : "Preview",
+      meridiem: "",
+      title: getUiLang() === "zh" ? "脱敏上下文" : "Sanitized Context",
+      message: getUiLang() === "zh"
+        ? "这是发送给时间问候生成器前的脱敏剪贴板内容。"
+        : "This is the sanitized clipboard context before it goes to the time check-in generator.",
+      detail,
+      dismissLabel: getUiLang() === "zh" ? "关闭" : "Dismiss",
+      requireAction: false,
+    });
+  }
   return {
     status: "ok",
     message: "Showing sanitized context preview.",
@@ -1278,9 +1271,12 @@ const {
   syncVisibility: syncUpdateBubbleVisibility,
 } = _updateBubble;
 
+_timeCheckinBubble = initTimeCheckinBubble(_updateBubbleCtx);
+
 function repositionFloatingBubbles() {
   if (pendingPermissions.length) repositionBubbles();
   repositionUpdateBubble();
+  if (_timeCheckinBubble) _timeCheckinBubble.reposition();
 }
 
 // ── macOS cross-Space visibility helper ──
@@ -2827,6 +2823,8 @@ function createWindow() {
   ipcMain.on("permission-decide", (event, behavior) => _perm.handleDecide(event, behavior));
   ipcMain.on("update-bubble-height", (event, height) => handleUpdateBubbleHeight(event, height));
   ipcMain.on("update-bubble-action", (event, actionId) => handleUpdateBubbleAction(event, actionId));
+  ipcMain.on("time-checkin-bubble-height", (event, height) => _timeCheckinBubble && _timeCheckinBubble.handleHeight(event, height));
+  ipcMain.on("time-checkin-bubble-dismiss", (event) => _timeCheckinBubble && _timeCheckinBubble.handleDismiss(event));
   ipcMain.on("translate-height", handleTranslateHeight);
   ipcMain.on("translate-close", handleTranslateClose);
 
@@ -3231,6 +3229,7 @@ if (!gotTheLock) {
     _perm.cleanup();
     _server.cleanup();
     _updateBubble.cleanup();
+    if (_timeCheckinBubble) _timeCheckinBubble.cleanup();
     _state.cleanup();
     _tick.cleanup();
     _mini.cleanup();

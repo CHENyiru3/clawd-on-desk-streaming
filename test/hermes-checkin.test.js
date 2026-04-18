@@ -5,7 +5,7 @@ const assert = require("node:assert");
 const events = require("node:events");
 
 const childProcess = require("child_process");
-const { buildPrompt, buildFallbackMessage, runHermesCheckin } = require("../src/hermes-checkin");
+const { buildPrompt, buildFallbackMessage, buildTimeContext, runHermesCheckin } = require("../src/hermes-checkin");
 
 describe("hermes-checkin prompt building", () => {
   it("includes sanitized snippets and no raw secret markers are required from caller", () => {
@@ -20,14 +20,24 @@ describe("hermes-checkin prompt building", () => {
 
     assert.match(prompt, /5:00 PM Check-in/);
     assert.match(prompt, /\[REDACTED_TOKEN\]/);
+    assert.match(prompt, /Current local time is 5:00 PM/);
+    assert.match(prompt, /This is a evening check-in\./);
   });
 
-  it("builds a local fallback message", () => {
+  it("builds a time-aware local fallback message", () => {
     const message = buildFallbackMessage({
       now: new Date(2026, 3, 17, 17, 0, 0, 0),
       context: { counts: { totalEntries: 0 } },
     });
     assert.match(message, /It's 5:00 PM/);
+    assert.match(message, /Wrap-up time|wrap-up window/i);
+  });
+
+  it("builds explicit time context", () => {
+    const ctx = buildTimeContext(new Date(2026, 3, 17, 23, 0, 0, 0), "11:00 PM Check-in");
+    assert.strictEqual(ctx.clockLabel, "11:00 PM");
+    assert.strictEqual(ctx.partOfDay, "late-night");
+    assert.match(ctx.transitionHint, /slowing down/i);
   });
 
   it("runs hermes through non-interactive chat mode while preserving resume args", async () => {
@@ -42,7 +52,7 @@ describe("hermes-checkin prompt building", () => {
         end() {},
       };
       queueMicrotask(() => {
-        child.stdout.emit("data", "Warm check-in");
+        child.stdout.emit("data", "session_id: 20260418_1\n© Resumed session\nWarm check-in");
         child.emit("close", 0);
       });
       return child;
@@ -76,6 +86,7 @@ describe("hermes-checkin prompt building", () => {
       ],
     });
     assert.strictEqual(result.ok, true);
-    assert.strictEqual(result.text, "Warm check-in");
+    assert.strictEqual(result.cleanedText, "Warm check-in");
+    assert.strictEqual(result.cleanedChanged, true);
   });
 });

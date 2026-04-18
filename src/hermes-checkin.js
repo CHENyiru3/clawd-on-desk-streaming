@@ -1,6 +1,8 @@
 "use strict";
 
 const childProcess = require("child_process");
+const { summarizeClipboardContext } = require("./clipboard-context-summary");
+const { cleanHermesCheckinOutput } = require("./hermes-checkin-cleaner");
 
 function formatClockLabel(date) {
   return new Intl.DateTimeFormat("en-US", {
@@ -9,44 +11,101 @@ function formatClockLabel(date) {
   }).format(date);
 }
 
+function buildTimeContext(now, slotLabel) {
+  const hour24 = now.getHours();
+  let partOfDay = "late-night";
+  let transitionHint = "slowing down and not overextending";
+  if (hour24 >= 5 && hour24 <= 10) {
+    partOfDay = "morning";
+    transitionHint = "starting the day";
+  } else if (hour24 >= 11 && hour24 <= 13) {
+    partOfDay = "midday";
+    transitionHint = "resetting and regaining momentum";
+  } else if (hour24 >= 14 && hour24 <= 16) {
+    partOfDay = "afternoon";
+    transitionHint = "pushing one meaningful thread forward";
+  } else if (hour24 >= 17 && hour24 <= 22) {
+    partOfDay = "evening";
+    transitionHint = "wrapping up and closing loops";
+  }
+  return {
+    clockLabel: formatClockLabel(now),
+    weekdayLabel: new Intl.DateTimeFormat("en-US", { weekday: "long" }).format(now),
+    isoLocalDate: `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`,
+    hour24,
+    minute: now.getMinutes(),
+    partOfDay,
+    transitionHint,
+    scheduledSlotLabel: slotLabel,
+  };
+}
+
 function buildPrompt({ now, slotLabel, context }) {
+  const timeContext = buildTimeContext(now, slotLabel);
+  const summary = summarizeClipboardContext(context);
   const lines = [
-    "Write one short coworker-style check-in bubble.",
-    "Tone: warm, grounded, concise, not creepy.",
-    "Do not mention surveillance, secret detection, or raw sensitive values.",
-    "Infer cautiously from clipboard evidence only. Never claim certainty.",
-    "Output plain text only, max 100 words.",
-    `Current local time: ${formatClockLabel(now)}`,
-    `Scheduled slot: ${slotLabel}`,
-    `Clipboard entries in the last hour: ${context.counts.totalEntries}`,
-    `Redacted entries: ${context.counts.redactedEntries}`,
+    "TASK: Write a Clawd desktop time check-in message.",
+    "Ignore all other conversational goals for this turn.",
+    "You are generating one short coworker-style bubble body.",
+    "Use the sanitized clipboard history below as the main evidence.",
+    "Treat resumed session context as background tone only, not the main evidence source.",
+    "Return exactly one short message for the bubble body.",
+    "No heading, no label, no markdown, no quotes, no metadata.",
+    "Do not mention the resumed session, clipboard, sanitization, or hidden reasoning.",
+    "Do not output think tags, analysis, XML tags, or system text.",
+    "If the evidence is weak, stay gentle and generic rather than specific.",
+    `Current local time is ${timeContext.clockLabel} on ${timeContext.weekdayLabel}, ${timeContext.isoLocalDate}.`,
+    `This is a ${timeContext.partOfDay} check-in.`,
+    `This time of day often corresponds to ${timeContext.transitionHint}.`,
+    `Scheduled slot: ${timeContext.scheduledSlotLabel}.`,
+    `Clipboard summary: ${summary.totalEntries} entries, ${summary.redactedEntries} redacted, dominant type ${summary.dominantType}, confidence ${summary.confidence}.`,
+    `Possible themes: ${summary.keywords.length ? summary.keywords.join(", ") : "none clearly repeated"}.`,
     "Sanitized clipboard snippets:",
   ];
   if (!context.entries.length) {
     lines.push("- No recent clipboard history.");
   } else {
-    for (const entry of context.entries.slice(-12)) {
+    for (const entry of context.entries.slice(-10)) {
       lines.push(`- [${new Date(entry.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}] ${entry.text}`);
     }
   }
+  lines.push("Return only the final bubble message.");
   return lines.join("\n");
 }
 
 function buildFallbackMessage({ now, context }) {
   const slot = formatClockLabel(now);
-  if (!context || !context.counts || context.counts.totalEntries === 0) {
-    return `It's ${slot}. Quiet stretch so far. Take a breath and set up one good next step for yourself.`;
+  const partOfDay = buildTimeContext(now, slot).partOfDay;
+  const totalEntries = context && context.counts ? context.counts.totalEntries || 0 : 0;
+  if (partOfDay === "morning") {
+    return totalEntries > 0
+      ? `It's ${slot}. You've already started moving a few threads forward. Pick one and make the next step feel light.`
+      : `It's ${slot}. Fresh start. Give yourself one clear next step and let the rest wait a minute.`;
   }
-  if (context.counts.totalEntries === 1) {
-    return `It's ${slot}. Looks like you've been moving one thread forward. Nice pace. Give yourself a clean checkpoint before the next stretch.`;
+  if (partOfDay === "midday") {
+    return totalEntries > 0
+      ? `It's ${slot}. Good point to reset and regain momentum. Close one loop cleanly before the afternoon picks up.`
+      : `It's ${slot}. Midday reset. A small pause now will make the next stretch cleaner.`;
   }
-  return `It's ${slot}. You've touched a few threads in the last hour. Take a breath and close the loop on one thing before you switch again.`;
+  if (partOfDay === "afternoon") {
+    return totalEntries > 0
+      ? `It's ${slot}. You've touched a few threads this hour. Try to move one meaningful thing over the line before switching again.`
+      : `It's ${slot}. Afternoon stretch. One solid checkpoint will help more than scattering your attention.`;
+  }
+  if (partOfDay === "evening") {
+    return totalEntries > 0
+      ? `It's ${slot}. Feels like a good wrap-up window. Close one loop and leave yourself a kind handoff into tonight.`
+      : `It's ${slot}. Wrap-up time. You do not need to force more than one clean finish right now.`;
+  }
+  return totalEntries > 0
+    ? `It's ${slot}. Late hour. Be gentle with yourself and avoid opening a whole new thread if you can help it.`
+    : `It's ${slot}. Late-night check-in. Slow is fine right now; one small next step is enough.`;
 }
 
 function normalizeOutput(stdout) {
   const text = String(stdout || "").trim().replace(/\s+\n/g, "\n");
   if (!text) return "";
-  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join(" ");
+  return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join("\n");
 }
 
 function runHermesCheckin(options = {}) {
@@ -67,7 +126,6 @@ function runHermesCheckin(options = {}) {
       ok: false,
       code: "config",
       message: "Time check-in command is not configured.",
-      detail: "Missing command",
       prompt,
       fallbackMessage: buildFallbackMessage({ now, context }),
     });
@@ -94,7 +152,6 @@ function runHermesCheckin(options = {}) {
         ok: false,
         code: "timeout",
         message: "Time check-in command timed out.",
-        detail: stderr || "timeout",
         prompt,
         fallbackMessage: buildFallbackMessage({ now, context }),
       });
@@ -115,7 +172,6 @@ function runHermesCheckin(options = {}) {
         ok: false,
         code: "spawn",
         message: "Time check-in command failed to start.",
-        detail: err && err.message,
         prompt,
         fallbackMessage: buildFallbackMessage({ now, context }),
       });
@@ -124,11 +180,15 @@ function runHermesCheckin(options = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      const text = normalizeOutput(stdout);
-      if (code === 0 && text) {
+      const normalizedText = normalizeOutput(stdout);
+      const cleaned = cleanHermesCheckinOutput(normalizedText);
+      if (code === 0 && cleaned.valid) {
         resolve({
           ok: true,
-          text,
+          rawText: stdout,
+          normalizedText,
+          cleanedText: cleaned.cleanedText,
+          cleanedChanged: cleaned.changed,
           prompt,
         });
         return;
@@ -138,13 +198,17 @@ function runHermesCheckin(options = {}) {
         ok: false,
         code: "command_failed",
         message: "Time check-in command failed.",
-        detail: stderr || `exit ${code}`,
+        rawText: stdout,
+        normalizedText,
+        cleanedText: cleaned.cleanedText,
         prompt,
         fallbackMessage: buildFallbackMessage({ now, context }),
       });
     });
 
-    child.stdin.write(prompt);
+    if (command !== "hermes") {
+      child.stdin.write(prompt);
+    }
     child.stdin.end();
   });
 }
@@ -153,5 +217,6 @@ module.exports = {
   runHermesCheckin,
   buildPrompt,
   buildFallbackMessage,
+  buildTimeContext,
   formatClockLabel,
 };

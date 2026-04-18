@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  overflow: hidden;
+  font-family: "Georgia", "Iowan Old Style", "Palatino Linotype", serif;
+  -webkit-font-smoothing: antialiased;
+}
+body { padding: 8px; user-select: none; }
+
+:root {
+  --bg: linear-gradient(180deg, rgba(250,244,236,0.98), rgba(244,234,221,0.98));
+  --border: rgba(88, 63, 43, 0.18);
+  --shadow: 0 16px 40px rgba(74, 55, 38, 0.18), 0 3px 10px rgba(74, 55, 38, 0.12);
+  --title: #8a5b32;
+  --time: #3a291a;
+  --body: #4c3b2c;
+  --detail: #8b7766;
+  --buttonBg: rgba(255,255,255,0.7);
+  --buttonBorder: rgba(88, 63, 43, 0.16);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: linear-gradient(180deg, rgba(46,35,29,0.97), rgba(33,24,20,0.97));
+    --border: rgba(255,255,255,0.12);
+    --shadow: 0 16px 40px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25);
+    --title: #e9b882;
+    --time: #fff1de;
+    --body: #eadbc8;
+    --detail: #b8a28f;
+    --buttonBg: rgba(255,255,255,0.08);
+    --buttonBorder: rgba(255,255,255,0.14);
+  }
+}
+
+.card {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  box-shadow: var(--shadow);
+  padding: 18px 18px 14px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.26s ease, transform 0.3s ease;
+}
+.card.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.time-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.time {
+  font-size: 48px;
+  line-height: 0.95;
+  letter-spacing: -0.04em;
+  color: var(--time);
+  font-weight: 700;
+}
+.meridiem {
+  font-size: 15px;
+  color: var(--title);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.label {
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--title);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+.message {
+  margin-top: 10px;
+  color: var(--body);
+  font-size: 15px;
+  line-height: 1.45;
+}
+.detail {
+  margin-top: 10px;
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--detail);
+}
+.detail:empty { display: none; }
+.dismiss {
+  background: var(--buttonBg);
+  border: 1px solid var(--buttonBorder);
+  border-radius: 999px;
+  padding: 7px 12px;
+  color: var(--body);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+  <div class="card" id="card">
+    <div class="header">
+      <div>
+        <div class="time-wrap">
+          <div class="time" id="timeLabel"></div>
+          <div class="meridiem" id="meridiem"></div>
+        </div>
+        <div class="label" id="title"></div>
+      </div>
+      <button class="dismiss" id="dismissBtn"></button>
+    </div>
+    <div class="message" id="message"></div>
+    <div class="detail" id="detail"></div>
+  </div>
+<script>
+const card = document.getElementById("card");
+const timeLabelEl = document.getElementById("timeLabel");
+const meridiemEl = document.getElementById("meridiem");
+const titleEl = document.getElementById("title");
+const messageEl = document.getElementById("message");
+const detailEl = document.getElementById("detail");
+const dismissBtn = document.getElementById("dismissBtn");
+
+function reportHeight() {
+  requestAnimationFrame(() => {
+    window.timeCheckinBubbleAPI.reportHeight(card.offsetHeight + 16);
+  });
+}
+
+function show(payload) {
+  timeLabelEl.textContent = payload.timeLabel || "";
+  meridiemEl.textContent = payload.meridiem || "";
+  titleEl.textContent = payload.title || "Check-in";
+  messageEl.textContent = payload.message || "";
+  detailEl.textContent = payload.detail || "";
+  dismissBtn.textContent = payload.dismissLabel || "Dismiss";
+  card.classList.add("visible");
+  reportHeight();
+}
+
+function hide() {
+  card.classList.remove("visible");
+}
+
+dismissBtn.addEventListener("click", () => window.timeCheckinBubbleAPI.dismiss());
+window.timeCheckinBubbleAPI.onShow(show);
+window.timeCheckinBubbleAPI.onHide(hide);
+</script>
+</body>
+</html>
