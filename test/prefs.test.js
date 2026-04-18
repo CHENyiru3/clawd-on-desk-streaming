@@ -62,7 +62,6 @@ describe("prefs.getDefaults", () => {
       [
         "browserReadingReaction",
         "clipboardReaction",
-        "frontmostAppReaction",
         "mediaPlaybackReaction",
         "notificationReaction",
         "presenceWake",
@@ -74,6 +73,20 @@ describe("prefs.getDefaults", () => {
     const d = prefs.getDefaults();
     assert.strictEqual(d.translateProvider, "minimax");
     assert.strictEqual(d.translateApiKey, "");
+  });
+
+  it("seeds time check-in prefs", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(typeof d.timeCheckinEnabled, "boolean");
+    assert.strictEqual(d.timeCheckinScheduleMode, "twoHourWithAnchors");
+    assert.strictEqual(d.timeCheckinPreviewClipboardWindowMinutes, 60);
+    assert.deepStrictEqual(d.timeCheckinGenerator, {
+      cwd: "/Users/eric_yiru/Desktop/Home",
+      command: "hermes",
+      args: ["--resume", "20260417_140020_0b84f5"],
+      timeoutMs: 30000,
+    });
+    assert.strictEqual(d.timeCheckinLastRunAt, null);
   });
 
   it("seeds all known agents as enabled", () => {
@@ -158,17 +171,36 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.translateApiKey, "secret-key");
   });
 
+  it("normalizes time check-in generator fields", () => {
+    const v = prefs.validate({
+      timeCheckinGenerator: {
+        cwd: " /tmp/checkins ",
+        command: " hermes ",
+        args: ["--resume", "abc", 42, ""],
+        timeoutMs: 999999,
+      },
+      timeCheckinLastRunAt: 1234,
+    });
+    assert.deepStrictEqual(v.timeCheckinGenerator, {
+      cwd: "/tmp/checkins",
+      command: "hermes",
+      args: ["--resume", "abc"],
+      timeoutMs: 120000,
+    });
+    assert.strictEqual(v.timeCheckinLastRunAt, 1234);
+  });
+
   it("normalizes globalActivityRules and drops malformed entries", () => {
     const v = prefs.validate({
       globalActivityRules: {
-        frontmostAppReaction: false,
         clipboardReaction: true,
         notificationReaction: "yes",
+        frontmostAppReaction: false,
       },
     });
-    assert.strictEqual(v.globalActivityRules.frontmostAppReaction, false);
     assert.strictEqual(v.globalActivityRules.clipboardReaction, true);
     assert.strictEqual(typeof v.globalActivityRules.notificationReaction, "boolean");
+    assert.strictEqual("frontmostAppReaction" in v.globalActivityRules, false);
   });
 
   it("normalizes agents (drops malformed entries)", () => {

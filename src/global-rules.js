@@ -3,13 +3,11 @@
 const { isBrowserApp } = require("./macos-browser-activity");
 
 const TRANSIENT_RULES = new Set([
-  "frontmostAppReaction",
   "clipboardReaction",
   "notificationReaction",
 ]);
 
 const RULE_STATE_MAP = {
-  frontmostAppReaction: "attention",
   clipboardReaction: "carrying",
   notificationReaction: "notification",
   mediaPlaybackReaction: "listening",
@@ -19,7 +17,6 @@ const RULE_STATE_MAP = {
 const RULE_PRIORITY = {
   notificationReaction: 5,
   clipboardReaction: 4,
-  frontmostAppReaction: 3,
   mediaPlaybackReaction: 2,
   browserReadingReaction: 1,
 };
@@ -33,7 +30,6 @@ module.exports = function createGlobalRulesEngine(options = {}) {
 
   let enabled = !!options.enabled;
   let rules = {
-    frontmostAppReaction: true,
     clipboardReaction: true,
     notificationReaction: true,
     presenceWake: true,
@@ -146,9 +142,6 @@ module.exports = function createGlobalRulesEngine(options = {}) {
         browserReading = true;
         evaluatePersistentRules();
       }, 3000);
-    }
-    if (rules.frontmostAppReaction) {
-      activateTransient("frontmostAppReaction", 1200);
     } else {
       evaluatePersistentRules();
     }
@@ -234,10 +227,6 @@ module.exports = function createGlobalRulesEngine(options = {}) {
   }
 
   function runTest(ruleId) {
-    if (ruleId === "frontmostAppReaction") {
-      notifySignal({ type: "frontmost-app-changed", appId: "com.apple.finder", appName: "Finder", at: nowFn() });
-      return { status: "ok", message: "Showing app-switch reaction." };
-    }
     if (ruleId === "clipboardReaction") {
       notifySignal({ type: "clipboard-text-changed", textPreview: "Sample copied text", at: nowFn() });
       return { status: "ok", message: "Showing clipboard reaction." };

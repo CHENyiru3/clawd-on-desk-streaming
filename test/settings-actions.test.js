@@ -100,17 +100,34 @@ describe("updateRegistry pure-data validators", () => {
   it("globalActivityRules requires a complete boolean map", () => {
     const deps = { snapshot: baseSnapshot };
     assert.strictEqual(updateRegistry.globalActivityRules({
-      frontmostAppReaction: true,
       clipboardReaction: true,
       notificationReaction: true,
       presenceWake: true,
       mediaPlaybackReaction: true,
       browserReadingReaction: true,
     }, deps).status, "ok");
-    assert.strictEqual(updateRegistry.globalActivityRules({
-      frontmostAppReaction: true,
-    }, deps).status, "error");
+    assert.strictEqual(updateRegistry.globalActivityRules({ clipboardReaction: true }, deps).status, "error");
     assert.strictEqual(updateRegistry.globalActivityRules("nope", deps).status, "error");
+  });
+
+  it("time check-in fields validate correctly", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.timeCheckinEnabled(true, deps).status, "ok");
+    assert.strictEqual(updateRegistry.timeCheckinScheduleMode("twoHourWithAnchors", deps).status, "ok");
+    assert.strictEqual(updateRegistry.timeCheckinPreviewClipboardWindowMinutes(60, deps).status, "ok");
+    assert.strictEqual(updateRegistry.timeCheckinLastRunAt(null, deps).status, "ok");
+    assert.strictEqual(updateRegistry.timeCheckinGenerator({
+      cwd: "/Users/eric_yiru/Desktop/Home",
+      command: "hermes",
+      args: ["--resume", "abc"],
+      timeoutMs: 30000,
+    }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.timeCheckinGenerator({
+      cwd: "/Users/eric_yiru/Desktop/Home",
+      command: "",
+      args: ["--resume"],
+      timeoutMs: 30000,
+    }, deps).status, "error");
   });
 
   it("object-form boolean fields validate via entry.validate", () => {

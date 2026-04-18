@@ -13,7 +13,6 @@ describe("global-rules engine", () => {
     engine = createGlobalRulesEngine({
       enabled: true,
       rules: {
-        frontmostAppReaction: true,
         clipboardReaction: true,
         notificationReaction: true,
         presenceWake: true,
@@ -27,16 +26,26 @@ describe("global-rules engine", () => {
     mock.timers.reset();
   });
 
-  it("app switch creates transient attention state", () => {
+  it("app switch does not create a visible reaction", () => {
     const snap = engine.notifySignal({
       type: "frontmost-app-changed",
       appId: "com.apple.finder",
       appName: "Finder",
       at: Date.now(),
     });
-    assert.strictEqual(snap.activeRuleId, "frontmostAppReaction");
-    assert.strictEqual(snap.activeVisualState, "attention");
-    mock.timers.tick(1200);
+    assert.strictEqual(snap.activeRuleId, null);
+    assert.strictEqual(snap.activeVisualState, null);
+  });
+
+  it("app switch still refreshes presence activity", () => {
+    const snap = engine.notifySignal({
+      type: "frontmost-app-changed",
+      appId: "com.apple.finder",
+      appName: "Finder",
+      at: Date.now(),
+    });
+    assert.strictEqual(snap.presenceActive, true);
+    mock.timers.tick(10001);
     assert.strictEqual(engine.getSnapshot().activeVisualState, null);
   });
 

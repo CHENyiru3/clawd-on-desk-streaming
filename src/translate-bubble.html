@@ -230,7 +230,52 @@ const DIR_LABELS = {
   "zh-en": "中文\u2192EN",
 };
 
+const SUCCESS_AUTO_DISMISS_MS = 20000;
+const ERROR_AUTO_DISMISS_MS = 5000;
+
 let autoTimer = null;
+let autoDeadline = 0;
+let autoRemainingMs = 0;
+let autoPaused = false;
+
+function clearAutoDismiss() {
+  if (autoTimer) {
+    clearTimeout(autoTimer);
+    autoTimer = null;
+  }
+  autoDeadline = 0;
+  autoRemainingMs = 0;
+  autoPaused = false;
+}
+
+function scheduleAutoDismiss(ms) {
+  clearAutoDismiss();
+  if (!(ms > 0)) return;
+  autoRemainingMs = ms;
+  autoDeadline = Date.now() + ms;
+  autoTimer = setTimeout(() => {
+    clearAutoDismiss();
+    window.translateAPI.close();
+  }, ms);
+}
+
+function pauseAutoDismiss() {
+  if (autoPaused || !autoTimer) return;
+  clearTimeout(autoTimer);
+  autoTimer = null;
+  autoRemainingMs = Math.max(0, autoDeadline - Date.now());
+  autoPaused = true;
+}
+
+function resumeAutoDismiss() {
+  if (!autoPaused || !(autoRemainingMs > 0)) return;
+  autoPaused = false;
+  autoDeadline = Date.now() + autoRemainingMs;
+  autoTimer = setTimeout(() => {
+    clearAutoDismiss();
+    window.translateAPI.close();
+  }, autoRemainingMs);
+}
 
 function reveal() {
   card.classList.remove("hiding");
@@ -241,7 +286,7 @@ function reveal() {
 }
 
 function showLoading(sourceText, lang, direction) {
-  clearTimeout(autoTimer);
+  clearAutoDismiss();
   const uiLang = (lang === "zh") ? "zh" : "en";
   titleEl.textContent = STRINGS[uiLang].title;
   dirBadge.textContent = DIR_LABELS[direction] || "";
@@ -256,7 +301,7 @@ function showLoading(sourceText, lang, direction) {
 }
 
 function showResult(sourceText, translatedText, lang, direction, diagnostic) {
-  clearTimeout(autoTimer);
+  clearAutoDismiss();
   const uiLang = (lang === "zh") ? "zh" : "en";
   titleEl.textContent = STRINGS[uiLang].title;
   dirBadge.textContent = DIR_LABELS[direction] || "";
@@ -278,14 +323,11 @@ function showResult(sourceText, translatedText, lang, direction, diagnostic) {
     : "Ctrl+Shift+T";
   reveal();
 
-  // Auto-dismiss after 12s
-  autoTimer = setTimeout(() => {
-    window.translateAPI.close();
-  }, 12000);
+  scheduleAutoDismiss(SUCCESS_AUTO_DISMISS_MS);
 }
 
 function showError(sourceText, errorMsg, lang, diagnostic) {
-  clearTimeout(autoTimer);
+  clearAutoDismiss();
   const uiLang = (lang === "zh") ? "zh" : "en";
   titleEl.textContent = STRINGS[uiLang].title;
   dirBadge.style.display = "none";
@@ -300,16 +342,16 @@ function showError(sourceText, errorMsg, lang, diagnostic) {
   }
   reveal();
 
-  // Auto-dismiss after 5s on error
-  autoTimer = setTimeout(() => {
-    window.translateAPI.close();
-  }, 5000);
+  scheduleAutoDismiss(ERROR_AUTO_DISMISS_MS);
 }
 
 closeBtn.addEventListener("click", () => {
-  clearTimeout(autoTimer);
+  clearAutoDismiss();
   window.translateAPI.close();
 });
+
+card.addEventListener("mouseenter", pauseAutoDismiss);
+card.addEventListener("mouseleave", resumeAutoDismiss);
 
 window.translateAPI.onShow((data) => {
   if (data.status === "loading") {

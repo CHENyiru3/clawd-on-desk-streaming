@@ -37,6 +37,8 @@ contextBridge.exposeInMainWorld("settingsAPI", {
   runTerminalActionCheck: () => ipcRenderer.invoke("settings:run-terminal-action-check"),
   runGlobalActivityTest: (ruleId) => ipcRenderer.invoke("settings:run-global-activity-test", ruleId),
   getGlobalActivityStatus: () => ipcRenderer.invoke("settings:get-global-activity-status"),
+  runTimeCheckinNow: () => ipcRenderer.invoke("settings:run-time-checkin-now"),
+  previewTimeCheckinContext: () => ipcRenderer.invoke("settings:preview-time-checkin-context"),
   update: (key, value) => ipcRenderer.invoke("settings:update", { key, value }),
   command: (action, payload) => ipcRenderer.invoke("settings:command", { action, payload }),
   listAgents: () => ipcRenderer.invoke("settings:list-agents"),

@@ -30,6 +30,7 @@ const STRINGS = {
     sectionTranslation: "Translation",
     sectionDiagnostics: "Diagnostics",
     sectionGlobalActivity: "Global Activity",
+    sectionTimeCheckins: "Time Check-ins",
     sectionStartup: "Startup",
     sectionBubbles: "Bubbles",
     agentsTitle: "Agents",
@@ -113,7 +114,6 @@ const STRINGS = {
     rowGlobalActivityStatusIdle: "No global rule active.",
     rowGlobalActivityStatusActive: "Active rule: {rule}",
     rowGlobalActivityLastErrorNone: "No recent collector errors.",
-    rowGlobalRuleFrontmost: "App switch reaction",
     rowGlobalRuleClipboard: "Clipboard reaction",
     rowGlobalRuleNotification: "Notification reaction",
     rowGlobalRulePresence: "Presence wake",
@@ -124,10 +124,29 @@ const STRINGS = {
     rowGlobalCollectorNotification: "Notifications",
     rowGlobalCollectorMedia: "Media",
     rowGlobalCollectorBrowser: "Browser",
-    actionTestGlobalFrontmost: "Test App Switch",
     actionTestGlobalClipboard: "Test Clipboard",
     actionTestGlobalReading: "Test Reading",
     actionTestGlobalListening: "Test Listening",
+    rowTimeCheckinEnabled: "Enable scheduled check-ins",
+    rowTimeCheckinEnabledDesc: "Generate a warm check-in every 2 hours using sanitized clipboard history from the past hour.",
+    rowTimeCheckinSchedule: "Schedule",
+    rowTimeCheckinScheduleDesc: "Every 2 hours, with key checkpoints at 10:00 AM, 5:00 PM, and 11:00 PM.",
+    rowTimeCheckinWindow: "Clipboard window (minutes)",
+    rowTimeCheckinWindowDesc: "How much recent clipboard history to summarize for each check-in.",
+    rowTimeCheckinGeneratorCwd: "Generator working directory",
+    rowTimeCheckinGeneratorCwdDesc: "The folder used when running the Hermes resume command.",
+    rowTimeCheckinGeneratorCommand: "Generator command",
+    rowTimeCheckinGeneratorCommandDesc: "Executable used for scheduled check-ins.",
+    rowTimeCheckinGeneratorArgs: "Generator args",
+    rowTimeCheckinGeneratorArgsDesc: "Arguments passed to the generator command.",
+    rowTimeCheckinGeneratorTimeout: "Generator timeout (ms)",
+    rowTimeCheckinGeneratorTimeoutDesc: "How long Clawd waits before falling back to a local message.",
+    rowTimeCheckinStatus: "Check-in status",
+    rowTimeCheckinStatusIdle: "No check-ins have run yet.",
+    rowTimeCheckinStatusOk: "Last check-in completed.",
+    rowTimeCheckinStatusError: "Last check-in used a fallback or failed.",
+    actionRunTimeCheckinNow: "Run Time Check-in Now",
+    actionPreviewTimeCheckinContext: "Preview Sanitized Context",
     placeholderTitle: "Coming soon",
     placeholderDesc: "This panel will land in a future Clawd release. The plan lives in docs/plan-settings-panel.md.",
     toastSaveFailed: "Couldn't save: ",
@@ -225,6 +244,7 @@ const STRINGS = {
     sectionTranslation: "翻译",
     sectionDiagnostics: "诊断",
     sectionGlobalActivity: "全局活动",
+    sectionTimeCheckins: "整点问候",
     sectionStartup: "启动",
     sectionBubbles: "气泡",
     agentsTitle: "Agent 管理",
@@ -307,7 +327,6 @@ const STRINGS = {
     rowGlobalActivityStatusIdle: "当前没有激活的全局规则。",
     rowGlobalActivityStatusActive: "当前规则：{rule}",
     rowGlobalActivityLastErrorNone: "最近没有采集器错误。",
-    rowGlobalRuleFrontmost: "应用切换反应",
     rowGlobalRuleClipboard: "剪贴板反应",
     rowGlobalRuleNotification: "通知反应",
     rowGlobalRulePresence: "存在感唤醒",
@@ -318,10 +337,29 @@ const STRINGS = {
     rowGlobalCollectorNotification: "通知",
     rowGlobalCollectorMedia: "媒体",
     rowGlobalCollectorBrowser: "浏览器",
-    actionTestGlobalFrontmost: "测试应用切换",
     actionTestGlobalClipboard: "测试剪贴板",
     actionTestGlobalReading: "测试阅读",
     actionTestGlobalListening: "测试聆听",
+    rowTimeCheckinEnabled: "启用定时问候",
+    rowTimeCheckinEnabledDesc: "每 2 小时根据过去 1 小时的脱敏剪贴板历史生成一条温和同事风格的问候。",
+    rowTimeCheckinSchedule: "时间表",
+    rowTimeCheckinScheduleDesc: "每 2 小时一次，并包含 10:00、17:00、23:00 这些关键时点。",
+    rowTimeCheckinWindow: "剪贴板窗口（分钟）",
+    rowTimeCheckinWindowDesc: "每次问候会总结多少分钟内的剪贴板历史。",
+    rowTimeCheckinGeneratorCwd: "生成器工作目录",
+    rowTimeCheckinGeneratorCwdDesc: "运行 Hermes resume 命令时使用的目录。",
+    rowTimeCheckinGeneratorCommand: "生成器命令",
+    rowTimeCheckinGeneratorCommandDesc: "用于定时问候的可执行命令。",
+    rowTimeCheckinGeneratorArgs: "生成器参数",
+    rowTimeCheckinGeneratorArgsDesc: "传给生成器命令的参数。",
+    rowTimeCheckinGeneratorTimeout: "生成器超时（毫秒）",
+    rowTimeCheckinGeneratorTimeoutDesc: "超过该时间后会回退到本地模板消息。",
+    rowTimeCheckinStatus: "问候状态",
+    rowTimeCheckinStatusIdle: "尚未运行过问候。",
+    rowTimeCheckinStatusOk: "上一次问候已完成。",
+    rowTimeCheckinStatusError: "上一次问候使用了回退消息或失败。",
+    actionRunTimeCheckinNow: "立即运行时间问候",
+    actionPreviewTimeCheckinContext: "预览脱敏上下文",
     placeholderTitle: "即将推出",
     placeholderDesc: "此面板将在 Clawd 后续版本中加入，规划见 docs/plan-settings-panel.md。",
     toastSaveFailed: "保存失败：",
@@ -2016,13 +2054,37 @@ function renderGeneralTab(parent) {
   parent.appendChild(buildSection(t("sectionGlobalActivity"), [
     buildGlobalActivityEnabledRow(),
     buildGlobalActivityStatusRow(),
-    buildGlobalRuleRow("frontmostAppReaction", "rowGlobalRuleFrontmost"),
     buildGlobalRuleRow("clipboardReaction", "rowGlobalRuleClipboard"),
     buildGlobalRuleRow("notificationReaction", "rowGlobalRuleNotification"),
     buildGlobalRuleRow("presenceWake", "rowGlobalRulePresence"),
     buildGlobalRuleRow("mediaPlaybackReaction", "rowGlobalRuleMedia"),
     buildGlobalRuleRow("browserReadingReaction", "rowGlobalRuleBrowser"),
     buildGlobalActivityDiagnosticsRow(),
+  ]));
+
+  parent.appendChild(buildSection(t("sectionTimeCheckins"), [
+    buildSwitchRow({
+      key: "timeCheckinEnabled",
+      labelKey: "rowTimeCheckinEnabled",
+      descKey: "rowTimeCheckinEnabledDesc",
+    }),
+    buildTimeCheckinStaticRow("rowTimeCheckinSchedule", "rowTimeCheckinScheduleDesc"),
+    buildTimeCheckinTextRow({
+      key: "timeCheckinPreviewClipboardWindowMinutes",
+      labelKey: "rowTimeCheckinWindow",
+      descKey: "rowTimeCheckinWindowDesc",
+      format: (value) => String(value || 60),
+      parse: (value) => Number.parseInt(value, 10),
+    }),
+    buildTimeCheckinGeneratorRow("cwd", "rowTimeCheckinGeneratorCwd", "rowTimeCheckinGeneratorCwdDesc"),
+    buildTimeCheckinGeneratorRow("command", "rowTimeCheckinGeneratorCommand", "rowTimeCheckinGeneratorCommandDesc"),
+    buildTimeCheckinGeneratorArgsRow(),
+    buildTimeCheckinGeneratorRow("timeoutMs", "rowTimeCheckinGeneratorTimeout", "rowTimeCheckinGeneratorTimeoutDesc", {
+      format: (value) => String(value || 30000),
+      parse: (value) => Number.parseInt(value, 10),
+    }),
+    buildTimeCheckinStatusRow(),
+    buildTimeCheckinActionsRow(),
   ]));
 }
 
@@ -2280,10 +2342,165 @@ function buildGlobalActivityDiagnosticsRow() {
   ctrl.className = "row-control";
   ctrl.style.gap = "8px";
   ctrl.style.flexWrap = "wrap";
-  ctrl.appendChild(buildActionButton("actionTestGlobalFrontmost", () => window.settingsAPI.runGlobalActivityTest("frontmostAppReaction")));
   ctrl.appendChild(buildActionButton("actionTestGlobalClipboard", () => window.settingsAPI.runGlobalActivityTest("clipboardReaction")));
   ctrl.appendChild(buildActionButton("actionTestGlobalReading", () => window.settingsAPI.runGlobalActivityTest("browserReadingReaction")));
   ctrl.appendChild(buildActionButton("actionTestGlobalListening", () => window.settingsAPI.runGlobalActivityTest("mediaPlaybackReaction")));
+  row.appendChild(ctrl);
+  return row;
+}
+
+function readTimeCheckinGenerator() {
+  const cfg = snapshot && snapshot.timeCheckinGenerator;
+  return cfg && typeof cfg === "object"
+    ? cfg
+    : { cwd: "", command: "", args: [], timeoutMs: 30000 };
+}
+
+function commitTimeCheckinGenerator(patch) {
+  const current = readTimeCheckinGenerator();
+  return window.settingsAPI.update("timeCheckinGenerator", {
+    ...current,
+    ...patch,
+  });
+}
+
+function buildTimeCheckinStaticRow(labelKey, descKey) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t(labelKey))}</span>` +
+      `<span class="row-desc">${escapeHtml(t(descKey))}</span>` +
+    `</div>`;
+  return row;
+}
+
+function buildTimeCheckinTextRow({ key, labelKey, descKey, format, parse }) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t(labelKey))}</span>` +
+      `<span class="row-desc">${escapeHtml(t(descKey))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "soft-input";
+  input.value = format(snapshot && snapshot[key]);
+  input.addEventListener("blur", () => {
+    const next = parse(input.value);
+    Promise.resolve(window.settingsAPI.update(key, next)).then((result) => {
+      if (!result || result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastSaveFailed") + msg, { error: true });
+        input.value = format(snapshot && snapshot[key]);
+      }
+    });
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildTimeCheckinGeneratorRow(field, labelKey, descKey, options = {}) {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t(labelKey))}</span>` +
+      `<span class="row-desc">${escapeHtml(t(descKey))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.minWidth = "260px";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "soft-input";
+  const current = readTimeCheckinGenerator();
+  input.value = options.format ? options.format(current[field]) : String(current[field] || "");
+  input.addEventListener("blur", () => {
+    const rawValue = options.parse ? options.parse(input.value) : input.value;
+    Promise.resolve(commitTimeCheckinGenerator({ [field]: rawValue })).then((result) => {
+      if (!result || result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastSaveFailed") + msg, { error: true });
+        const fresh = readTimeCheckinGenerator();
+        input.value = options.format ? options.format(fresh[field]) : String(fresh[field] || "");
+      }
+    });
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildTimeCheckinGeneratorArgsRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTimeCheckinGeneratorArgs"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowTimeCheckinGeneratorArgsDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "soft-input";
+  input.style.minWidth = "280px";
+  input.value = readTimeCheckinGenerator().args.join(" ");
+  input.addEventListener("blur", () => {
+    const nextArgs = input.value.trim() ? input.value.trim().split(/\s+/) : [];
+    Promise.resolve(commitTimeCheckinGenerator({ args: nextArgs })).then((result) => {
+      if (!result || result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastSaveFailed") + msg, { error: true });
+        input.value = readTimeCheckinGenerator().args.join(" ");
+      }
+    });
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildTimeCheckinStatusRow() {
+  const status = snapshot && snapshot.timeCheckinStatus;
+  let stateText = t("rowTimeCheckinStatusIdle");
+  if (status && status.lastResult === "ok") stateText = t("rowTimeCheckinStatusOk");
+  else if (status && status.lastResult === "error") stateText = t("rowTimeCheckinStatusError");
+  const detailBits = [];
+  if (status && status.nextRunAt) detailBits.push(`Next: ${new Date(status.nextRunAt).toLocaleString()}`);
+  if (status && status.lastRunAt) detailBits.push(`Last: ${new Date(status.lastRunAt).toLocaleString()}`);
+  if (status && status.lastError) detailBits.push(status.lastError);
+  if (status && status.lastMessagePreview) detailBits.push(status.lastMessagePreview);
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTimeCheckinStatus"))}</span>` +
+      `<span class="row-desc">${escapeHtml(stateText)}</span>` +
+      (detailBits.length ? `<span class="row-desc">${escapeHtml(detailBits.join(" · "))}</span>` : "") +
+    `</div>`;
+  return row;
+}
+
+function buildTimeCheckinActionsRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("sectionTimeCheckins"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowTimeCheckinEnabledDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.gap = "8px";
+  ctrl.style.flexWrap = "wrap";
+  ctrl.appendChild(buildActionButton("actionRunTimeCheckinNow", () => window.settingsAPI.runTimeCheckinNow()));
+  ctrl.appendChild(buildActionButton("actionPreviewTimeCheckinContext", () => window.settingsAPI.previewTimeCheckinContext()));
   row.appendChild(ctrl);
   return row;
 }

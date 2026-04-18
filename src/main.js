@@ -15,6 +15,10 @@ const createMacosFrontmostAppMonitor = require("./macos-frontmost-app-monitor");
 const createMacosClipboardMonitor = require("./macos-clipboard-monitor");
 const createMacosNotificationMonitor = require("./macos-notification-monitor");
 const createMacosMediaMonitor = require("./macos-media-monitor");
+const createClipboardHistory = require("./clipboard-history");
+const { sanitizeClipboardText } = require("./clipboard-sanitizer");
+const createTimeCheckinRuntime = require("./time-checkin");
+const { runHermesCheckin, formatClockLabel } = require("./hermes-checkin");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -192,6 +196,15 @@ let globalActivityStatus = {
   lastError: null,
 };
 
+let timeCheckinStatus = {
+  enabled: !!_settingsController.get("timeCheckinEnabled"),
+  nextRunAt: null,
+  lastRunAt: _settingsController.get("timeCheckinLastRunAt"),
+  lastResult: "unknown",
+  lastError: null,
+  lastMessagePreview: null,
+};
+
 function buildSettingsSnapshot() {
   return {
     ..._settingsController.getSnapshot(),
@@ -202,7 +215,125 @@ function buildSettingsSnapshot() {
       ...globalActivityStatus,
       collectorStatus: { ...(globalActivityStatus.collectorStatus || {}) },
     },
+    timeCheckinStatus: { ...timeCheckinStatus },
   };
+}
+
+const _clipboardHistory = createClipboardHistory({
+  maxAgeMs: 60 * 60 * 1000,
+  sanitizer: sanitizeClipboardText,
+});
+
+let _timeCheckinRuntime = null;
+
+function getTimeCheckinContext(windowMinutes = null) {
+  const minutes = Number.isInteger(windowMinutes) && windowMinutes > 0
+    ? windowMinutes
+    : (_settingsController.get("timeCheckinPreviewClipboardWindowMinutes") || 60);
+  return _clipboardHistory.getSanitizedSummary(minutes * 60 * 1000);
+}
+
+function getTimeCheckinGeneratorConfig() {
+  const cfg = _settingsController.get("timeCheckinGenerator") || {};
+  return {
+    cwd: cfg.cwd || "",
+    command: cfg.command || "",
+    args: Array.isArray(cfg.args) ? cfg.args.slice() : [],
+    timeoutMs: cfg.timeoutMs || 30000,
+  };
+}
+
+function buildTimeCheckinTitle(nowDate) {
+  return `${formatClockLabel(nowDate)} Check-in`;
+}
+
+function buildTimeCheckinBubblePayload(nowDate, message) {
+  return {
+    mode: "time-checkin",
+    lang: getUiLang(),
+    title: buildTimeCheckinTitle(nowDate),
+    message,
+    detail: getUiLang() === "zh"
+      ? "基于过去一小时的脱敏剪贴板活动。"
+      : "Based on sanitized clipboard activity from the past hour.",
+    actions: [
+      {
+        id: "dismiss",
+        label: getUiLang() === "zh" ? "关闭" : "Dismiss",
+        variant: "secondary",
+      },
+    ],
+    defaultAction: "dismiss",
+    requireAction: false,
+  };
+}
+
+async function generateTimeCheckinMessage({ reason, now }) {
+  const context = getTimeCheckinContext();
+  const result = await runHermesCheckin({
+    config: getTimeCheckinGeneratorConfig(),
+    context,
+    now,
+    slotLabel: buildTimeCheckinTitle(now),
+    logger: (msg) => console.warn("Clawd:", msg),
+  });
+  const message = result.ok ? result.text : result.fallbackMessage;
+  timeCheckinStatus = {
+    ...timeCheckinStatus,
+    enabled: !!_settingsController.get("timeCheckinEnabled"),
+    lastRunAt: now.getTime(),
+    lastResult: result.ok ? "ok" : "error",
+    lastError: result.ok ? null : (result.message || "Time check-in failed."),
+    lastMessagePreview: message,
+  };
+  _settingsController.applyUpdate("timeCheckinLastRunAt", now.getTime());
+  broadcastSettingsSnapshot();
+  return {
+    status: result.ok ? "ok" : "error",
+    detail: {
+      payload: buildTimeCheckinBubblePayload(now, message),
+      message,
+      context,
+      reason,
+      generator: {
+        ok: result.ok,
+        code: result.code || null,
+      },
+    },
+    message: result.ok
+      ? "Time check-in is ready."
+      : (result.message || "Time check-in used a fallback message."),
+  };
+}
+
+function handleTimeCheckinReady(detail) {
+  if (!detail) return;
+  if (doNotDisturb) {
+    broadcastSettingsSnapshot();
+    return;
+  }
+  showUpdateBubble(detail.payload);
+}
+
+function syncTimeCheckinFromPrefs() {
+  const enabled = !!_settingsController.get("timeCheckinEnabled");
+  timeCheckinStatus = {
+    ...timeCheckinStatus,
+    enabled,
+    lastRunAt: _settingsController.get("timeCheckinLastRunAt"),
+  };
+  if (!_timeCheckinRuntime) return;
+  if (enabled && isMac) _timeCheckinRuntime.start();
+  else _timeCheckinRuntime.stop();
+  const runtimeStatus = _timeCheckinRuntime.getStatus();
+  timeCheckinStatus = {
+    ...timeCheckinStatus,
+    nextRunAt: runtimeStatus.nextRunAt,
+    lastRunAt: runtimeStatus.lastRunAt || timeCheckinStatus.lastRunAt,
+    lastResult: runtimeStatus.lastResult || timeCheckinStatus.lastResult,
+    lastError: runtimeStatus.lastError || timeCheckinStatus.lastError,
+  };
+  broadcastSettingsSnapshot();
 }
 
 function updateTranslatorStatusSuccess(direction = null) {
@@ -993,6 +1124,60 @@ function runGlobalActivityTest(ruleId) {
   return result;
 }
 
+async function runTimeCheckinNow() {
+  if (!_timeCheckinRuntime) {
+    return { status: "error", message: "Time check-in runtime unavailable." };
+  }
+  await _timeCheckinRuntime.triggerNow("manual");
+  return {
+    status: timeCheckinStatus.lastResult === "error" ? "error" : "ok",
+    message: timeCheckinStatus.lastResult === "error"
+      ? (timeCheckinStatus.lastError || "Time check-in failed.")
+      : "Time check-in completed.",
+    detail: {
+      nextRunAt: timeCheckinStatus.nextRunAt,
+      lastRunAt: timeCheckinStatus.lastRunAt,
+      lastMessagePreview: timeCheckinStatus.lastMessagePreview,
+    },
+  };
+}
+
+function previewTimeCheckinContext() {
+  const context = getTimeCheckinContext();
+  const lines = context.entries.length
+    ? context.entries.map((entry) => `- [${new Date(entry.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}] ${entry.text}`)
+    : ["- No recent clipboard history."];
+  const detail = [
+    `Entries: ${context.counts.totalEntries}`,
+    `Redacted: ${context.counts.redactedEntries}`,
+    "",
+    ...lines,
+  ].join("\n");
+  showUpdateBubble({
+    mode: "time-checkin",
+    lang: getUiLang(),
+    title: getUiLang() === "zh" ? "脱敏上下文预览" : "Sanitized Context Preview",
+    message: getUiLang() === "zh"
+      ? "这是发送给时间问候生成器前的脱敏剪贴板内容。"
+      : "This is the sanitized clipboard context before it goes to the time check-in generator.",
+    detail,
+    actions: [
+      {
+        id: "dismiss",
+        label: getUiLang() === "zh" ? "关闭" : "Dismiss",
+        variant: "secondary",
+      },
+    ],
+    defaultAction: "dismiss",
+    requireAction: false,
+  });
+  return {
+    status: "ok",
+    message: "Showing sanitized context preview.",
+    detail: context,
+  };
+}
+
 async function triggerTranslate() {
   if (doNotDisturb || petHidden) return;
   showTranslateBubble();
@@ -1293,7 +1478,12 @@ _clipboardMonitor = createMacosClipboardMonitor({
     const { clipboard } = require("electron");
     return clipboard.readText();
   },
-  onTextChange: (signal) => handleGlobalRuleSignal({ type: "clipboard-text-changed", ...signal }),
+  onTextChange: (signal) => {
+    if (signal && typeof signal.text === "string" && signal.text.trim()) {
+      _clipboardHistory.add(signal.text, signal.at || Date.now());
+    }
+    handleGlobalRuleSignal({ type: "clipboard-text-changed", ...signal });
+  },
   onStatus: (status) => {
     _globalRulesEngine.setCollectorStatus("clipboard", status);
     syncGlobalActivityStatusFromEngine();
@@ -1312,6 +1502,22 @@ _mediaMonitor = createMacosMediaMonitor({
   onStatus: (status) => {
     _globalRulesEngine.setCollectorStatus("media", status);
     syncGlobalActivityStatusFromEngine();
+  },
+});
+
+_timeCheckinRuntime = createTimeCheckinRuntime({
+  generateMessage: ({ reason, now }) => generateTimeCheckinMessage({ reason, now }),
+  onCheckinReady: (detail) => handleTimeCheckinReady(detail),
+  onStatusChange: (runtimeStatus) => {
+    timeCheckinStatus = {
+      ...timeCheckinStatus,
+      enabled: !!_settingsController.get("timeCheckinEnabled"),
+      nextRunAt: runtimeStatus.nextRunAt,
+      lastRunAt: runtimeStatus.lastRunAt || timeCheckinStatus.lastRunAt,
+      lastResult: runtimeStatus.lastResult || timeCheckinStatus.lastResult,
+      lastError: runtimeStatus.lastError || timeCheckinStatus.lastError,
+    };
+    broadcastSettingsSnapshot();
   },
 });
 
@@ -1505,6 +1711,8 @@ const _menuCtx = {
   showTranslateBubbleTest: (mode) => showTranslateBubbleTest(mode),
   runTerminalActionCheck: () => runTerminalActionCheck(),
   runGlobalActivityTest: (ruleId) => runGlobalActivityTest(ruleId),
+  runTimeCheckinNow: () => runTimeCheckinNow(),
+  previewTimeCheckinContext: () => previewTimeCheckinContext(),
   isAgentLauncherEnabled: () => {
     const snap = _settingsController.getSnapshot();
     const al = snap && snap.agentLauncher;
@@ -1595,6 +1803,18 @@ function wireSettingsSubscribers() {
         syncGlobalActivityFromPrefs();
       } catch (err) {
         console.warn("Clawd: global activity sync failed:", err && err.message);
+      }
+    }
+    if (
+      "timeCheckinEnabled" in changes
+      || "timeCheckinGenerator" in changes
+      || "timeCheckinPreviewClipboardWindowMinutes" in changes
+      || "timeCheckinLastRunAt" in changes
+    ) {
+      try {
+        syncTimeCheckinFromPrefs();
+      } catch (err) {
+        console.warn("Clawd: time check-in sync failed:", err && err.message);
       }
     }
 
@@ -2118,6 +2338,8 @@ ipcMain.handle("settings:show-translate-bubble-test", (_event, mode) => showTran
 ipcMain.handle("settings:run-terminal-action-check", () => runTerminalActionCheck());
 ipcMain.handle("settings:run-global-activity-test", (_event, ruleId) => runGlobalActivityTest(ruleId));
 ipcMain.handle("settings:get-global-activity-status", () => ({ status: "ok", detail: globalActivityStatus }));
+ipcMain.handle("settings:run-time-checkin-now", () => runTimeCheckinNow());
+ipcMain.handle("settings:preview-time-checkin-context", () => previewTimeCheckinContext());
 
 // Static metadata for the Agents tab: name, eventSource, capabilities.
 // The renderer uses this (alongside the agents snapshot field) to render one
@@ -2937,6 +3159,7 @@ if (!gotTheLock) {
     createWindow();
     syncMacTypingMonitorFromPrefs();
     syncGlobalActivityFromPrefs();
+    syncTimeCheckinFromPrefs();
     void maybePromptMacTypingPermission();
 
     // Register global shortcut for toggling pet visibility

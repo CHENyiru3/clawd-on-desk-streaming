@@ -107,7 +107,6 @@ function requireGlobalActivityRules(value) {
     return { status: "error", message: "globalActivityRules must be a plain object" };
   }
   const required = [
-    "frontmostAppReaction",
     "clipboardReaction",
     "notificationReaction",
     "presenceWake",
@@ -118,6 +117,30 @@ function requireGlobalActivityRules(value) {
     if (typeof value[key] !== "boolean") {
       return { status: "error", message: `globalActivityRules.${key} must be a boolean` };
     }
+  }
+  return { status: "ok" };
+}
+
+function requireTimeCheckinGenerator(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { status: "error", message: "timeCheckinGenerator must be a plain object" };
+  }
+  if (typeof value.cwd !== "string") {
+    return { status: "error", message: "timeCheckinGenerator.cwd must be a string" };
+  }
+  if (typeof value.command !== "string" || !value.command.trim()) {
+    return { status: "error", message: "timeCheckinGenerator.command must be a non-empty string" };
+  }
+  if (!Array.isArray(value.args) || value.args.some((entry) => typeof entry !== "string")) {
+    return { status: "error", message: "timeCheckinGenerator.args must be a string array" };
+  }
+  if (
+    typeof value.timeoutMs !== "number"
+    || !Number.isFinite(value.timeoutMs)
+    || value.timeoutMs < 5000
+    || value.timeoutMs > 120000
+  ) {
+    return { status: "error", message: "timeCheckinGenerator.timeoutMs must be between 5000 and 120000" };
   }
   return { status: "ok" };
 }
@@ -235,6 +258,25 @@ const updateRegistry = {
   globalActivityEnabled: requireBoolean("globalActivityEnabled"),
   globalActivityRules: requireGlobalActivityRules,
   globalActivityOnboardingShown: requireBoolean("globalActivityOnboardingShown"),
+  timeCheckinEnabled: requireBoolean("timeCheckinEnabled"),
+  timeCheckinScheduleMode: requireEnum("timeCheckinScheduleMode", ["twoHourWithAnchors"]),
+  timeCheckinGenerator: requireTimeCheckinGenerator,
+  timeCheckinPreviewClipboardWindowMinutes(value) {
+    if (!Number.isInteger(value) || value <= 0 || value > 24 * 60) {
+      return {
+        status: "error",
+        message: "timeCheckinPreviewClipboardWindowMinutes must be an integer between 1 and 1440",
+      };
+    }
+    return { status: "ok" };
+  },
+  timeCheckinLastRunAt(value) {
+    if (value === null) return { status: "ok" };
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      return { status: "error", message: "timeCheckinLastRunAt must be null or a non-negative number" };
+    }
+    return { status: "ok" };
+  },
 
   // ── System-backed prefs (object-form: validate + effect pre-commit gate) ──
   //

@@ -77,7 +77,6 @@ const SCHEMA = {
   globalActivityRules: {
     type: "object",
     defaultFactory: () => ({
-      frontmostAppReaction: process.platform === "darwin",
       clipboardReaction: process.platform === "darwin",
       notificationReaction: process.platform === "darwin",
       presenceWake: process.platform === "darwin",
@@ -87,6 +86,33 @@ const SCHEMA = {
     normalize: normalizeGlobalActivityRules,
   },
   globalActivityOnboardingShown: { type: "boolean", default: false },
+  timeCheckinEnabled: { type: "boolean", default: process.platform === "darwin" },
+  timeCheckinScheduleMode: {
+    type: "string",
+    default: "twoHourWithAnchors",
+    enum: ["twoHourWithAnchors"],
+  },
+  timeCheckinGenerator: {
+    type: "object",
+    defaultFactory: () => ({
+      cwd: "/Users/eric_yiru/Desktop/Home",
+      command: "hermes",
+      args: ["--resume", "20260417_140020_0b84f5"],
+      timeoutMs: 30000,
+    }),
+    normalize: normalizeTimeCheckinGenerator,
+  },
+  timeCheckinPreviewClipboardWindowMinutes: {
+    type: "number",
+    default: 60,
+    validate: (v) => Number.isInteger(v) && v > 0 && v <= 24 * 60,
+  },
+  timeCheckinLastRunAt: {
+    type: "number",
+    default: null,
+    allowNull: true,
+    validate: (v) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0),
+  },
   // Theme
   theme: { type: "string", default: "clawd" },
   // Phase 2/3 placeholders — schema reserves the keys so future migrations don't need v2.
@@ -148,7 +174,8 @@ function getDefaults() {
 }
 
 function isValidValue(field, value) {
-  if (value === undefined || value === null) return false;
+  if (value === undefined) return false;
+  if (value === null) return field.allowNull === true;
   if (field.type === "object") {
     return typeof value === "object" && !Array.isArray(value);
   }
@@ -221,6 +248,8 @@ const AGENT_LAUNCHER_TRIGGER_LIST = Object.freeze([
 const AGENT_LAUNCHER_TRIGGERS = new Set(AGENT_LAUNCHER_TRIGGER_LIST);
 const AGENT_LAUNCHER_COMMAND_MAX = 256;
 const AGENT_LAUNCHER_CWD_MAX = 4096;
+const TIMECHECKIN_TIMEOUT_MIN = 5000;
+const TIMECHECKIN_TIMEOUT_MAX = 120000;
 
 /** Single-line command/path token — no shell metacharacters (prefs are untrusted). */
 function sanitizeAgentLauncherCommand(raw) {
@@ -255,8 +284,41 @@ function normalizeAgentLauncher(value, defaultsValue) {
   return out;
 }
 
+function sanitizeTimeCheckinCommand(raw, fallback) {
+  if (typeof raw !== "string") return fallback;
+  const s = raw.trim();
+  if (!s || /[\n\r\x00-\x1f]/.test(s)) return fallback;
+  return s;
+}
+
+function sanitizeTimeCheckinCwd(raw, fallback) {
+  if (typeof raw !== "string") return fallback;
+  const s = raw.trim();
+  if (!s || s.length > AGENT_LAUNCHER_CWD_MAX || /[\n\r\x00-\x1f]/.test(s)) return fallback;
+  return s;
+}
+
+function normalizeTimeCheckinArgs(raw, fallback) {
+  if (!Array.isArray(raw)) return fallback.slice();
+  return raw.filter((value) => typeof value === "string" && value.length > 0 && !/[\n\r\x00-\x1f]/.test(value));
+}
+
+function normalizeTimeCheckinGenerator(value, defaultsValue) {
+  const defaults = defaultsValue || SCHEMA.timeCheckinGenerator.defaultFactory();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ...defaults, args: defaults.args.slice() };
+  const out = {
+    cwd: sanitizeTimeCheckinCwd(value.cwd, defaults.cwd),
+    command: sanitizeTimeCheckinCommand(value.command, defaults.command),
+    args: normalizeTimeCheckinArgs(value.args, defaults.args),
+    timeoutMs: defaults.timeoutMs,
+  };
+  if (typeof value.timeoutMs === "number" && Number.isFinite(value.timeoutMs)) {
+    out.timeoutMs = Math.max(TIMECHECKIN_TIMEOUT_MIN, Math.min(TIMECHECKIN_TIMEOUT_MAX, Math.round(value.timeoutMs)));
+  }
+  return out;
+}
+
 const GLOBAL_ACTIVITY_RULE_KEYS = Object.freeze([
-  "frontmostAppReaction",
   "clipboardReaction",
   "notificationReaction",
   "presenceWake",
