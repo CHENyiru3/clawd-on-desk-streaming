@@ -10,8 +10,6 @@ const {
 } = require("../hooks/server-config");
 
 const isMac = process.platform === "darwin";
-const isLinux = process.platform === "linux";
-const isWin = process.platform === "win32";
 const { execFile } = require("child_process");
 
 function captureFrontApp(cb) {
@@ -305,12 +303,10 @@ function showPermissionBubble(permEntry) {
     show: false, // Fix lost focus
     frame: false,
     transparent: true,
-    alwaysOnTop: !isMac,
+    alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
-    ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-    ...(isMac ? { type: "panel" } : {}),
     focusable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload-bubble.js"),
@@ -320,10 +316,6 @@ function showPermissionBubble(permEntry) {
   });
 
   permEntry.bubble = bub;
-
-  if (isWin) {
-    bub.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-  }
 
   bub.loadFile(path.join(__dirname, "bubble.html"));
 
@@ -354,12 +346,10 @@ function showPermissionBubble(permEntry) {
 
   repositionBubbles();
   bub.showInactive();
-  // Linux WMs may reset skipTaskbar after showInactive — re-apply explicitly
-  if (isLinux) bub.setSkipTaskbar(true);
   // macOS: constructing/raising a topmost panel too early can still activate
   // Clawd on some setups. Defer topmost restoration until after showInactive.
   if (isMac) deferMacFloatingVisibility(ctx, bub);
-  else ctx.reapplyMacVisibility();
+  else if (typeof ctx.reapplyMacVisibility === "function") ctx.reapplyMacVisibility();
 
   bub.on("closed", () => {
     const idx = pendingPermissions.indexOf(permEntry);

@@ -133,14 +133,13 @@ describe("updater visual flow", () => {
     assert.match(bubbles[1].detail, /network down/);
   });
 
-  it("shows a real error bubble when packaged download fails after user starts it", async () => {
+  it("shows a success bubble when update available and user clicks primary on macOS", async () => {
     const bubbles = [];
     const handlers = {};
     const ctx = makeCtx({
       showUpdateBubble: async (payload) => {
         bubbles.push(payload);
         if (payload.mode === "available") return "primary";
-        if (payload.mode === "error") return "dismiss";
         return payload.defaultAction || null;
       },
     });
@@ -175,8 +174,9 @@ describe("updater visual flow", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "available", "downloading", "error"]);
-    assert.match(bubbles[3].detail, /download exploded/);
+    // On macOS: available → opens GitHub releases URL → ready bubble (no download)
+    assert.deepStrictEqual(bubbles.map((bubble) => bubble.mode), ["checking", "available", "ready"]);
+    assert.match(bubbles[2].message, /latest/);
   });
 
   it("uses the macOS packaged-update path by opening the releases page and showing a success bubble", async () => {

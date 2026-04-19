@@ -31,7 +31,7 @@ if (!state) process.exit(0);
 
 const config = getPlatformConfig();
 const resolve = createPidResolver({
-  agentNames: { win: new Set(["claude.exe"]), mac: new Set(["claude"]) },
+  agentNames: new Set(["claude"]),
   agentCmdlineCheck: (cmd) => cmd.includes("claude-code") || cmd.includes("@anthropic-ai"),
   platformConfig: config,
 });
@@ -64,13 +64,7 @@ readStdinJson().then((payload) => {
       // Check if claude process is running in non-interactive (-p/--print) mode
       try {
         const { execSync } = require("child_process");
-        const isWin = process.platform === "win32";
-        const cmdOut = isWin
-          ? execSync(
-              `wmic process where "ProcessId=${agentPid}" get CommandLine /format:csv`,
-              { encoding: "utf8", timeout: 500, windowsHide: true }
-            )
-          : execSync(`ps -o command= -p ${agentPid}`, { encoding: "utf8", timeout: 500 });
+        const cmdOut = execSync(`ps -o command= -p ${agentPid}`, { encoding: "utf8", timeout: 500 });
         if (/\s(-p|--print)(\s|$)/.test(cmdOut)) body.headless = true;
       } catch {}
     }

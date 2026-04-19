@@ -4,7 +4,7 @@
 module.exports = {
   id: "copilot-cli",
   name: "Copilot CLI",
-  processNames: { win: ["copilot.exe"], mac: ["copilot"], linux: ["copilot"] },
+  processNames: ["copilot"],
   eventSource: "hook",
   // camelCase event names — matches Copilot CLI hook system
   eventMap: {

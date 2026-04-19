@@ -10,35 +10,25 @@ html, body {
   height: 100%;
   background: transparent;
   overflow: hidden;
-  font-family: "Georgia", "Iowan Old Style", "Palatino Linotype", serif;
+  font-family: Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 body { padding: 8px; user-select: none; }
 
 :root {
-  --bg: linear-gradient(180deg, rgba(250,244,236,0.98), rgba(244,234,221,0.98));
-  --border: rgba(88, 63, 43, 0.18);
-  --shadow: 0 16px 40px rgba(74, 55, 38, 0.18), 0 3px 10px rgba(74, 55, 38, 0.12);
-  --title: #8a5b32;
-  --time: #3a291a;
-  --body: #4c3b2c;
-  --detail: #8b7766;
-  --buttonBg: rgba(255,255,255,0.7);
-  --buttonBorder: rgba(88, 63, 43, 0.16);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: linear-gradient(180deg, rgba(46,35,29,0.97), rgba(33,24,20,0.97));
-    --border: rgba(255,255,255,0.12);
-    --shadow: 0 16px 40px rgba(0,0,0,0.35), 0 3px 10px rgba(0,0,0,0.25);
-    --title: #e9b882;
-    --time: #fff1de;
-    --body: #eadbc8;
-    --detail: #b8a28f;
-    --buttonBg: rgba(255,255,255,0.08);
-    --buttonBorder: rgba(255,255,255,0.14);
-  }
+  --bg: rgba(255, 255, 255, 0.99);
+  --border: rgba(24, 32, 46, 0.12);
+  --shadow: 0 18px 42px rgba(20, 27, 38, 0.14), 0 3px 10px rgba(20, 27, 38, 0.08);
+  --title: #4c6d9f;
+  --time: #111827;
+  --body: #223041;
+  --detail: #64748b;
+  --buttonBg: #eff6ff;
+  --buttonHoverBg: #dbeafe;
+  --buttonBorder: rgba(76, 109, 159, 0.22);
+  --buttonHoverBorder: rgba(76, 109, 159, 0.34);
+  --buttonText: #27466d;
+  --buttonShadow: 0 8px 18px rgba(76, 109, 159, 0.14);
 }
 
 .card {
@@ -105,11 +95,24 @@ body { padding: 8px; user-select: none; }
   background: var(--buttonBg);
   border: 1px solid var(--buttonBorder);
   border-radius: 999px;
-  padding: 7px 12px;
-  color: var(--body);
+  padding: 8px 14px;
+  color: var(--buttonText);
   font: inherit;
   font-size: 12px;
+  font-weight: 700;
   cursor: pointer;
+  box-shadow: 0 2px 6px rgba(76, 109, 159, 0.08);
+  transition: background 0.18s ease, border-color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
+}
+.dismiss:hover {
+  background: var(--buttonHoverBg);
+  border-color: var(--buttonHoverBorder);
+  transform: translateY(-1px);
+  box-shadow: var(--buttonShadow);
+}
+.dismiss:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(76, 109, 159, 0.12);
 }
 </style>
 </head>
@@ -149,7 +152,7 @@ function show(payload) {
   titleEl.textContent = payload.title || "Check-in";
   messageEl.textContent = payload.message || "";
   detailEl.textContent = payload.detail || "";
-  dismissBtn.textContent = payload.dismissLabel || "Dismiss";
+  dismissBtn.textContent = payload.dismissLabel || "Copy that Clawdie";
   card.classList.add("visible");
   reportHeight();
 }

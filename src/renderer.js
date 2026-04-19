@@ -3,8 +3,11 @@
 // Reactions are triggered via IPC from main (relayed from hit window).
 
 const container = document.getElementById("pet-container");
+const petStage = document.getElementById("pet-stage") || container;
 let clawdEl = document.getElementById("clawd");
+const providerUsageHud = document.getElementById("provider-usage-hud");
 let pendingNext = null;
+let providerUsageSnapshot = null;
 
 // ── Theme config (injected via preload.js additionalArguments) ──
 let tc = window.themeConfig || {};
@@ -135,6 +138,106 @@ let _transitions = {};  // per-file fade config: { "file.apng": { in: 400, out: 
 let _miniFlipAssets = false; // theme's mini assets drawn in reverse direction
 let _inMiniMode = false;
 
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatWindowPercent(windowInfo) {
+  if (windowInfo && typeof windowInfo.remainingPercent === "number" && Number.isFinite(windowInfo.remainingPercent)) {
+    return `${Math.round(windowInfo.remainingPercent)}%`;
+  }
+  if (windowInfo && typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent)) {
+    return `${Math.max(0, Math.round(100 - windowInfo.usedPercent))}%`;
+  }
+  if (windowInfo && windowInfo.status === "error") return "Err";
+  if (windowInfo && windowInfo.status === "stale") return "Stale";
+  return "N/A";
+}
+
+function getWindowFillPercent(windowInfo) {
+  if (windowInfo && ["error", "unavailable", "stale"].includes(windowInfo.status)) {
+    return 100;
+  }
+  if (windowInfo && typeof windowInfo.remainingPercent === "number" && Number.isFinite(windowInfo.remainingPercent)) {
+    return Math.max(0, Math.min(100, windowInfo.remainingPercent));
+  }
+  if (windowInfo && typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent)) {
+    return Math.max(0, Math.min(100, 100 - windowInfo.usedPercent));
+  }
+  return 0;
+}
+
+function computeHudScale({ containerHeight, contentHeight, topOffset = 10, bottomOffset = 8, minScale = 0.72 }) {
+  if (!Number.isFinite(containerHeight) || containerHeight <= 0) return 1;
+  if (!Number.isFinite(contentHeight) || contentHeight <= 0) return 1;
+  const availableHeight = Math.max(1, containerHeight - topOffset - bottomOffset);
+  if (contentHeight <= availableHeight) return 1;
+  const scaled = availableHeight / contentHeight;
+  return Math.max(minScale, Math.min(1, scaled));
+}
+
+function applyProviderUsageHudLayout() {
+  if (!providerUsageHud) return;
+  if (providerUsageHud.classList.contains("hidden")) {
+    providerUsageHud.style.setProperty("--provider-hud-scale", "1");
+    return;
+  }
+  providerUsageHud.style.setProperty("--provider-hud-scale", "1");
+  const scale = computeHudScale({
+    containerHeight: container ? container.clientHeight : 0,
+    contentHeight: providerUsageHud.scrollHeight,
+    topOffset: 10,
+    bottomOffset: 8,
+    minScale: 0.68,
+  });
+  providerUsageHud.style.setProperty("--provider-hud-scale", String(scale));
+}
+
+function renderProviderUsageHud() {
+  if (!providerUsageHud) return;
+  if (_inMiniMode || !providerUsageSnapshot || providerUsageSnapshot.hudEnabled === false || !providerUsageSnapshot.providers) {
+    providerUsageHud.classList.add("hidden");
+    providerUsageHud.innerHTML = "";
+    applyProviderUsageHudLayout();
+    return;
+  }
+  providerUsageHud.classList.remove("hidden");
+  const cards = providerUsageSnapshot.providers;
+  providerUsageHud.innerHTML = ["codex", "cursor", "minimax"].map((provider) => {
+    const card = cards[provider] || { label: provider, status: "unavailable", windows: [] };
+    const windows = Array.isArray(card.windows) ? card.windows : [];
+    const windowsMarkup = windows.map((windowInfo) => {
+      const fill = getWindowFillPercent(windowInfo);
+      const showMeta = !["error", "unavailable", "stale"].includes(windowInfo.status);
+      const submeta = showMeta ? (windowInfo.resetText || windowInfo.detailText || "") : "";
+      return (
+        `<div class="provider-usage-window" data-window="${escapeHtml(windowInfo.key || "")}" data-status="${escapeHtml(windowInfo.status || "unavailable")}">` +
+          `<div class="provider-usage-window-head">` +
+            `<span class="provider-usage-window-label">${escapeHtml(windowInfo.label || "--")}</span>` +
+            `<span class="provider-usage-window-percent">${escapeHtml(formatWindowPercent(windowInfo))}</span>` +
+          `</div>` +
+          `<div class="provider-usage-track"><div class="provider-usage-fill" style="width:${fill}%"></div></div>` +
+          `<div class="provider-usage-window-meta">${escapeHtml(submeta || "\u00a0")}</div>` +
+        `</div>`
+      );
+    }).join("");
+    return (
+      `<div class="provider-usage-row" data-provider="${provider}" data-status="${card.status || "unavailable"}">` +
+        `<div class="provider-usage-head">` +
+          `<span>${escapeHtml(card.label || provider)}</span>` +
+        `</div>` +
+        `<div class="provider-usage-windows">${windowsMarkup}</div>` +
+      `</div>`
+    );
+  }).join("");
+  applyProviderUsageHudLayout();
+}
+
 function applyMiniFlip(el) {
   if (!el || el.tagName !== "IMG") return;
   el.style.transform = (_miniFlipAssets && _inMiniMode) ? "scaleX(-1)" : "";
@@ -194,6 +297,16 @@ window.electronAPI.onMiniModeChange((enabled, edge) => {
   } else {
     removeGlyphFlipCompensation(clawdEl);
   }
+  renderProviderUsageHud();
+});
+
+window.electronAPI.onProviderUsageUpdate((payload) => {
+  providerUsageSnapshot = payload || null;
+  renderProviderUsageHud();
+});
+
+window.addEventListener("resize", () => {
+  applyProviderUsageHudLayout();
 });
 
 // Counter-flip asymmetric pixel-art glyphs (Zzz) inside SVG defs so they
@@ -369,7 +482,7 @@ function swapToFile(file, state, useObjectChannel) {
       }
       next.style.opacity = "1";
 
-      for (const child of [...container.querySelectorAll("object, img.clawd-img")]) {
+      for (const child of [...petStage.querySelectorAll("object, img.clawd-img")]) {
         if (child !== next) {
           if (fadeOutMs > 0) fadeOutAndRemove(child, fadeOutMs);
           else if (child.tagName === "OBJECT") releaseObject(child);
@@ -394,7 +507,7 @@ function swapToFile(file, state, useObjectChannel) {
 
     next.addEventListener("load", swap, { once: true });
     next.data = url;
-    container.appendChild(next);
+    petStage.appendChild(next);
     pendingNext = next;
     setTimeout(() => {
       if (pendingNext !== next) return;
@@ -423,7 +536,7 @@ function swapToFile(file, state, useObjectChannel) {
       }
       next.style.opacity = "1";
 
-      for (const child of [...container.querySelectorAll("object, img.clawd-img")]) {
+      for (const child of [...petStage.querySelectorAll("object, img.clawd-img")]) {
         if (child !== next) {
           if (fadeOutMs > 0) fadeOutAndRemove(child, fadeOutMs);
           else if (child.tagName === "OBJECT") releaseObject(child);
@@ -443,7 +556,7 @@ function swapToFile(file, state, useObjectChannel) {
 
     next.addEventListener("load", swap, { once: true });
     next.src = url;
-    container.appendChild(next);
+    petStage.appendChild(next);
     pendingNext = next;
     // Timeout fallback for images that fail to load
     setTimeout(() => {

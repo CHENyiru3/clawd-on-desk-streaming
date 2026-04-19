@@ -4,11 +4,7 @@
 module.exports = {
   id: "cursor-agent",
   name: "Cursor Agent",
-  processNames: {
-    win: ["Cursor.exe"],
-    mac: ["Cursor"],
-    linux: ["cursor", "Cursor"],
-  },
+  processNames: ["Cursor"],
   eventSource: "hook",
   eventMap: {
     sessionStart: "idle",

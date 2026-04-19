@@ -6,7 +6,6 @@ const os = require("os");
 const { registerHooks, unregisterHooks, __test } = require("../hooks/install");
 const {
   parseClaudeVersion,
-  getWindowsClaudePathSuffixes,
   getClaudePathCandidates,
   getClaudePackageJsonCandidates,
   getClaudeVersionFromPackageJson,
@@ -78,43 +77,11 @@ describe("Claude version detection helpers", () => {
     assert.strictEqual(parseClaudeVersion(null), null);
   });
 
-  it("normalizes Windows PATHEXT suffixes with stable order", () => {
-    assert.deepStrictEqual(
-      getWindowsClaudePathSuffixes(".EXE;.Cmd;;BAT;.ps1"),
-      ["", ".cmd", ".ps1", ".exe", ".bat"]
-    );
-  });
-
-  it("finds existing Windows Claude shims from PATH and de-dupes case-insensitively", () => {
-    const npmDir = "C:\\Users\\Tester\\AppData\\Roaming\\npm";
-    const npmDirUpper = "C:\\USERS\\Tester\\AppData\\Roaming\\NPM";
-    const toolsDir = "C:\\Tools";
-    const existing = new Set([
-      path.join(npmDir, "claude.cmd").toLowerCase(),
-      path.join(toolsDir, "claude.ps1").toLowerCase(),
-    ]);
-
-    const candidates = getClaudePathCandidates({
-      platform: "win32",
-      pathEnv: `"${npmDir}";${npmDirUpper};${toolsDir}`,
-      pathExt: ".CMD;.Ps1",
-      existsSync(candidatePath) {
-        return existing.has(candidatePath.toLowerCase());
-      },
-    });
-
-    assert.deepStrictEqual(candidates, [
-      path.join(npmDir, "claude.cmd"),
-      path.join(toolsDir, "claude.ps1"),
-    ]);
-  });
-
   it("finds existing POSIX Claude binaries from PATH", () => {
     const localDir = "/usr/local/bin";
     const optDir = "/opt/claude/bin";
 
     const candidates = getClaudePathCandidates({
-      platform: "linux",
       pathEnv: `${localDir}:${optDir}`,
       existsSync(candidatePath) {
         return candidatePath === path.join(optDir, "claude");
@@ -125,14 +92,13 @@ describe("Claude version detection helpers", () => {
   });
 
   it("collects Claude package.json candidates from sibling node_modules and realpath targets", () => {
-    const candidatePath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\claude.cmd";
+    const candidatePath = "/usr/local/bin/claude";
     const candidateDir = path.dirname(candidatePath);
     const siblingPackageJson = path.join(candidateDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
-    const realpathCli = "D:\\shim-store\\claude\\cli.js";
+    const realpathCli = "/shim-store/claude/cli.js";
     const realpathPackageJson = path.join(path.dirname(realpathCli), "package.json");
 
     const candidates = getClaudePackageJsonCandidates(candidatePath, {
-      platform: "win32",
       existsSync(packageJsonPath) {
         return packageJsonPath === siblingPackageJson || packageJsonPath === realpathPackageJson;
       },
@@ -145,7 +111,7 @@ describe("Claude version detection helpers", () => {
       },
       readFileSync(targetPath) {
         assert.strictEqual(targetPath, candidatePath);
-        return '@ECHO off\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\n';
+        return '#!/bin/sh\nexec node "$DIR/node_modules/@anthropic-ai/claude-code/cli.js" "$@"';
       },
     });
 
@@ -156,13 +122,12 @@ describe("Claude version detection helpers", () => {
   });
 
   it("skips reading unusually large shim files", () => {
-    const candidatePath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\claude.cmd";
+    const candidatePath = "/usr/local/bin/claude";
     const candidateDir = path.dirname(candidatePath);
     const siblingPackageJson = path.join(candidateDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
     let readCount = 0;
 
     const candidates = getClaudePackageJsonCandidates(candidatePath, {
-      platform: "win32",
       existsSync(packageJsonPath) {
         return packageJsonPath === siblingPackageJson;
       },
@@ -183,7 +148,7 @@ describe("Claude version detection helpers", () => {
   });
 
   it("reads Claude version from package.json when it contains a semver", () => {
-    const packageJsonPath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\node_modules\\@anthropic-ai\\claude-code\\package.json";
+    const packageJsonPath = "/usr/local/lib/node_modules/@anthropic-ai/claude-code/package.json";
 
     assert.deepStrictEqual(
       getClaudeVersionFromPackageJson(packageJsonPath, {
@@ -210,14 +175,13 @@ describe("Claude version detection helpers", () => {
   });
 
   it("returns the first valid fallback version info from candidate package.json files", () => {
-    const candidatePath = "C:\\Users\\Tester\\AppData\\Roaming\\npm\\claude.cmd";
+    const candidatePath = "/usr/local/bin/claude";
     const candidateDir = path.dirname(candidatePath);
     const siblingPackageJson = path.join(candidateDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
-    const realpathCli = "D:\\shim-store\\claude\\cli.js";
+    const realpathCli = "/shim-store/claude/cli.js";
     const realpathPackageJson = path.join(path.dirname(realpathCli), "package.json");
 
     const result = readClaudeVersionFallback(candidatePath, {
-      platform: "win32",
       existsSync(packageJsonPath) {
         return packageJsonPath === siblingPackageJson || packageJsonPath === realpathPackageJson;
       },
@@ -229,7 +193,7 @@ describe("Claude version detection helpers", () => {
       },
       readFileSync(targetPath) {
         if (targetPath === candidatePath) {
-          return '@ECHO off\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\n';
+          return '#!/bin/sh\nexec node "$DIR/node_modules/@anthropic-ai/claude-code/cli.js" "$@"';
         }
         if (targetPath === siblingPackageJson) {
           return JSON.stringify({ version: "latest" });
@@ -428,7 +392,6 @@ describe("Hook installer version compatibility", () => {
     const attempted = [];
     const expectedPath = path.join("/Users/tester", ".claude", "local", "claude");
     const info = __test.getClaudeVersion({
-      platform: "darwin",
       homeDir: "/Users/tester",
       execFileSync(command) {
         attempted.push(command);
@@ -446,101 +409,6 @@ describe("Hook installer version compatibility", () => {
     assert.deepStrictEqual(info, {
       version: "2.1.78",
       source: expectedPath,
-      status: "known",
-    });
-  });
-
-  it("falls back to npm shim sibling package.json on Windows when exec fails", () => {
-    const shimDir = "C:\\Users\\Tester\\AppData\\Roaming\\npm";
-    const shimPath = path.join(shimDir, "claude.cmd");
-    const packageJsonPath = path.join(shimDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
-    const attempted = [];
-
-    const info = __test.getClaudeVersion({
-      platform: "win32",
-      pathEnv: shimDir,
-      pathExt: ".CMD",
-      existsSync(candidatePath) {
-        return candidatePath === shimPath || candidatePath === packageJsonPath;
-      },
-      execFileSync(command) {
-        attempted.push(command);
-        const err = new Error("spawnSync failed");
-        err.code = "EPERM";
-        throw err;
-      },
-      statSync(targetPath) {
-        assert.strictEqual(targetPath, shimPath);
-        return { size: 512, isFile: () => true };
-      },
-      readFileSync(targetPath) {
-        if (targetPath === shimPath) {
-          return '@ECHO off\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\n';
-        }
-        if (targetPath === packageJsonPath) {
-          return JSON.stringify({ version: "2.1.109" });
-        }
-        throw new Error(`unexpected read: ${targetPath}`);
-      },
-      realpathSync() {
-        throw new Error("not a symlink");
-      },
-    });
-
-    assert.deepStrictEqual(attempted, [shimPath, "claude"]);
-    assert.deepStrictEqual(info, {
-      version: "2.1.109",
-      source: packageJsonPath,
-      status: "known",
-    });
-  });
-
-  it("prefers a later exec-based version over an earlier metadata fallback", () => {
-    const oldShimDir = "C:\\OldClaude";
-    const newShimDir = "C:\\NewClaude";
-    const oldShimPath = path.join(oldShimDir, "claude.cmd");
-    const newShimPath = path.join(newShimDir, "claude.cmd");
-    const oldPackageJsonPath = path.join(oldShimDir, "node_modules", "@anthropic-ai", "claude-code", "package.json");
-
-    const info = __test.getClaudeVersion({
-      platform: "win32",
-      pathEnv: `${oldShimDir};${newShimDir}`,
-      pathExt: ".CMD",
-      existsSync(candidatePath) {
-        return candidatePath === oldShimPath
-          || candidatePath === newShimPath
-          || candidatePath === oldPackageJsonPath;
-      },
-      execFileSync(command) {
-        if (command === oldShimPath || command === "claude") {
-          const err = new Error("spawnSync failed");
-          err.code = "EPERM";
-          throw err;
-        }
-        if (command === newShimPath) return "2.1.109 (Claude Code)\n";
-        throw new Error(`unexpected exec: ${command}`);
-      },
-      statSync(targetPath) {
-        if (targetPath === oldShimPath) return { size: 512, isFile: () => true };
-        throw new Error(`unexpected stat: ${targetPath}`);
-      },
-      readFileSync(targetPath) {
-        if (targetPath === oldShimPath) {
-          return '@ECHO off\n"%dp0%\\node.exe" "%dp0%\\node_modules\\@anthropic-ai\\claude-code\\cli.js" %*\n';
-        }
-        if (targetPath === oldPackageJsonPath) {
-          return JSON.stringify({ version: "2.1.5" });
-        }
-        throw new Error(`unexpected read: ${targetPath}`);
-      },
-      realpathSync() {
-        throw new Error("not a symlink");
-      },
-    });
-
-    assert.deepStrictEqual(info, {
-      version: "2.1.109",
-      source: newShimPath,
       status: "known",
     });
   });

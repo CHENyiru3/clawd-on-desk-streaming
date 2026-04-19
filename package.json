@@ -5,10 +5,7 @@
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
-    "build": "electron-builder --win",
-    "build:mac": "electron-builder --mac",
-    "build:linux": "electron-builder --linux",
-    "build:all": "electron-builder --win --mac --linux",
+    "build": "electron-builder --mac",
     "test": "node --test test/*.test.js",
     "create-theme": "node scripts/create-theme.js",
     "install:claude-hooks": "node hooks/install.js",
@@ -45,45 +42,6 @@
         "LSUIElement": true
       }
     },
-    "win": {
-      "icon": "assets/icon.ico",
-      "signAndEditExecutable": false,
-      "artifactName": "Clawd-on-Desk-Setup-${version}.${ext}",
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "linux": {
-      "maintainer": "rullerzhou-afk <rullerzhou-afk@users.noreply.github.com>",
-      "icon": "assets/icons",
-      "category": "Utility",
-      "target": [
-        {
-          "target": "AppImage",
-          "arch": [
-            "x64"
-          ]
-        },
-        {
-          "target": "deb",
-          "arch": [
-            "x64"
-          ]
-        }
-      ]
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico",
-      "installerHeaderIcon": "assets/icon.ico"
-    },
     "files": [
       "src/**/*",
       "assets/svg/**/*",
@@ -97,12 +55,6 @@
     "asarUnpack": [
       "hooks/**/*",
       "extensions/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "assets/icon.ico",
-        "to": "icon.ico"
-      }
     ],
     "publish": [
       {
@@ -120,7 +72,6 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "dotenv": "^17.4.2",
     "electron-updater": "^6.8.3",
-    "htmlparser2": "^12.0.0",
-    "koffi": "^2.15.2"
+    "htmlparser2": "^12.0.0"
   }
 }

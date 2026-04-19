@@ -783,28 +783,15 @@ function detectRunningAgentProcesses(callback) {
   if (_detectInFlight) return;
   _detectInFlight = true;
   const done = (result) => { _detectInFlight = false; callback(result); };
-  // Agent gate short-circuit: if every agent is disabled, skip the system
-  // call entirely — nothing we could "find" should keep startup recovery
-  // alive. When at least one agent is enabled, we still run the combined
-  // detection because the query can't attribute individual processes back
-  // to agent ids (wmic/pgrep would need per-name queries), and the result
-  // is only a boolean for startup recovery — not a session creator.
+  // Agent gate short-circuit: if every agent is disabled, skip the system call.
   if (typeof ctx.hasAnyEnabledAgent === "function" && !ctx.hasAnyEnabledAgent()) {
     done(false);
     return;
   }
   const { exec } = require("child_process");
-  if (process.platform === "win32") {
-    exec(
-      'wmic process where "(Name=\'node.exe\' and CommandLine like \'%claude-code%\') or Name=\'claude.exe\' or Name=\'codex.exe\' or Name=\'copilot.exe\' or Name=\'gemini.exe\' or Name=\'codebuddy.exe\' or Name=\'kiro.exe\' or Name=\'opencode.exe\'" get ProcessId /format:csv',
-      { encoding: "utf8", timeout: 5000, windowsHide: true },
-      (err, stdout) => done(!err && /\d+/.test(stdout))
-    );
-  } else {
-    exec("pgrep -f 'claude-code|codex|copilot|codebuddy' || pgrep -x 'gemini' || pgrep -x 'kiro' || pgrep -x 'opencode'", { timeout: 3000 },
-      (err) => done(!err)
-    );
-  }
+  exec("pgrep -f 'claude-code|codex|copilot|codebuddy' || pgrep -x 'gemini' || pgrep -x 'kiro' || pgrep -x 'opencode'", { timeout: 3000 },
+    (err) => done(!err)
+  );
 }
 
 function startStaleCleanup() {

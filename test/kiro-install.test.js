@@ -257,9 +257,7 @@ describe("Kiro hook installer", () => {
     assert.ok(clawdAgent.hooks.stop[0].command.includes("hooks/kiro-hook.js"));
   });
 
-  it("EXCLUDED_KEYS filtering: model/includeMcpJson absent, description always Clawd's", {
-    skip: process.platform === "win32" ? "fake kiro-cli uses POSIX shell script" : false,
-  }, () => {
+  it("EXCLUDED_KEYS filtering: model/includeMcpJson absent, description always Clawd's", () => {
     const { agentsDir } = makeTempKiroHome();
     const clawdPath = path.join(agentsDir, "clawd.json");
 

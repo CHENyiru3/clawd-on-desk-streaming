@@ -20,29 +20,20 @@ const { sanitizeClipboardText } = require("./clipboard-sanitizer");
 const createTimeCheckinRuntime = require("./time-checkin");
 const { runHermesCheckin, formatClockLabel } = require("./hermes-checkin");
 const initTimeCheckinBubble = require("./time-checkin-bubble");
+const createProviderUsageRuntime = require("./provider-usage-runtime");
+const { createEmptyUsageSnapshot, mergeUsageSnapshot } = require("./provider-usage-model");
+const { fetchProviderUsageSnapshots } = require("./provider-usage-fetchers");
+const { summarizeProviderUsageWithHermes } = require("./hermes-provider-usage");
+const { buildFallbackSummary } = require("./provider-usage-summary-fallback");
+const { resolveStartupWindowState } = require("./startup-window-state");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
 app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
 
 const isMac = process.platform === "darwin";
-const isLinux = process.platform === "linux";
-const isWin = process.platform === "win32";
-const LINUX_WINDOW_TYPE = "toolbar";
 const MAC_TYPING_PRIVACY_URL = "x-apple.systempreferences:com.apple.preference.security?Privacy_ListenEvent";
-
-
-// ── Windows: AllowSetForegroundWindow via FFI ──
-let _allowSetForeground = null;
-if (isWin) {
-  try {
-    const koffi = require("koffi");
-    const user32 = koffi.load("user32.dll");
-    _allowSetForeground = user32.func("bool __stdcall AllowSetForegroundWindow(int dwProcessId)");
-  } catch (err) {
-    console.warn("Clawd: koffi/AllowSetForegroundWindow not available:", err.message);
-  }
-}
+const PROVIDER_HUD_GUTTER_PX = 96;
 
 
 // ── Window size presets ──
@@ -85,14 +76,6 @@ function _uninstallClaudeHooksNow() {
 // and the startup hydration helper. Throws on failure so the action layer can
 // surface the error to the UI.
 function _writeSystemOpenAtLogin(enabled) {
-  if (isLinux) {
-    const launchScript = path.join(__dirname, "..", "launch.js");
-    const execCmd = app.isPackaged
-      ? `"${process.env.APPIMAGE || app.getPath("exe")}"`
-      : `node "${launchScript}"`;
-    loginItemHelpers.linuxSetOpenAtLogin(enabled, { execCmd });
-    return;
-  }
   app.setLoginItemSettings(
     loginItemHelpers.getLoginItemSettings({
       isPackaged: app.isPackaged,
@@ -103,7 +86,6 @@ function _writeSystemOpenAtLogin(enabled) {
   );
 }
 function _readSystemOpenAtLogin() {
-  if (isLinux) return loginItemHelpers.linuxGetOpenAtLogin();
   return app.getLoginItemSettings(
     app.isPackaged ? {} : { path: process.execPath, args: [app.getAppPath()] }
   ).openAtLogin;
@@ -206,6 +188,18 @@ let timeCheckinStatus = {
   lastMessagePreview: null,
 };
 
+let providerUsageStatus = {
+  enabled: !!_settingsController.get("providerUsageRefreshEnabled"),
+  nextRunAt: null,
+  lastRunAt: _settingsController.get("providerUsageLastRunAt"),
+  lastResult: "unknown",
+  lastError: null,
+  lastSummary: null,
+};
+
+let providerUsageSnapshot = createEmptyUsageSnapshot();
+let hermesWorkflowBusy = false;
+
 function buildSettingsSnapshot() {
   return {
     ..._settingsController.getSnapshot(),
@@ -217,6 +211,22 @@ function buildSettingsSnapshot() {
       collectorStatus: { ...(globalActivityStatus.collectorStatus || {}) },
     },
     timeCheckinStatus: { ...timeCheckinStatus },
+    providerUsageStatus: { ...providerUsageStatus },
+    providerUsageSnapshot: {
+      ...providerUsageSnapshot,
+      providers: Object.fromEntries(
+        Object.entries(providerUsageSnapshot.providers || {}).map(([key, value]) => [
+          key,
+          value && typeof value === "object"
+            ? { ...value, windows: Array.isArray(value.windows) ? value.windows.map((windowInfo) => ({ ...windowInfo })) : [] }
+            : value,
+        ])
+      ),
+      hermesSummary: {
+        ...(providerUsageSnapshot.hermesSummary || {}),
+        providerHints: { ...((providerUsageSnapshot.hermesSummary && providerUsageSnapshot.hermesSummary.providerHints) || {}) },
+      },
+    },
   };
 }
 
@@ -227,6 +237,7 @@ const _clipboardHistory = createClipboardHistory({
 
 let _timeCheckinRuntime = null;
 let _timeCheckinBubble = null;
+let _providerUsageRuntime = null;
 
 function getTimeCheckinContext(windowMinutes = null) {
   const minutes = Number.isInteger(windowMinutes) && windowMinutes > 0
@@ -245,6 +256,23 @@ function getTimeCheckinGeneratorConfig() {
   };
 }
 
+function getProviderUsageCheckerConfig() {
+  const cfg = _settingsController.get("providerUsageChecker") || {};
+  return {
+    python: cfg.python || "python3",
+    scriptPath: cfg.scriptPath || "",
+    timeoutMs: cfg.timeoutMs || 30000,
+    browser: cfg.browser || "auto",
+  };
+}
+
+function sendProviderUsageToRenderer() {
+  sendToRenderer("provider-usage-update", {
+    ...providerUsageSnapshot,
+    hudEnabled: !!_settingsController.get("providerUsageHudEnabled"),
+  });
+}
+
 function buildTimeCheckinTitle(nowDate) {
   return `${formatClockLabel(nowDate)} Check-in`;
 }
@@ -260,20 +288,26 @@ function buildTimeCheckinBubblePayload(nowDate, message) {
     detail: getUiLang() === "zh"
       ? "基于过去一小时的脱敏剪贴板活动。"
       : "Based on sanitized clipboard activity from the past hour.",
-    dismissLabel: getUiLang() === "zh" ? "关闭" : "Dismiss",
+    dismissLabel: "Copy that Clawdie",
     requireAction: false,
   };
 }
 
 async function generateTimeCheckinMessage({ reason, now }) {
   const context = getTimeCheckinContext();
-  const result = await runHermesCheckin({
-    config: getTimeCheckinGeneratorConfig(),
-    context,
-    now,
-    slotLabel: buildTimeCheckinTitle(now),
-    logger: (msg) => console.warn("Clawd:", msg),
-  });
+  hermesWorkflowBusy = true;
+  let result;
+  try {
+    result = await runHermesCheckin({
+      config: getTimeCheckinGeneratorConfig(),
+      context,
+      now,
+      slotLabel: buildTimeCheckinTitle(now),
+      logger: (msg) => console.warn("Clawd:", msg),
+    });
+  } finally {
+    hermesWorkflowBusy = false;
+  }
   const message = (result.ok && result.cleanedText) ? result.cleanedText : (result.fallbackMessage || "Take a breath. One clean next step is enough.");
   const generatorStatus = result.ok ? (result.cleanedChanged ? "cleaned" : "ok") : "fallback";
   timeCheckinStatus = {
@@ -332,6 +366,99 @@ function syncTimeCheckinFromPrefs() {
     lastError: runtimeStatus.lastError || timeCheckinStatus.lastError,
   };
   broadcastSettingsSnapshot();
+}
+
+async function fetchAndSummarizeProviderUsage({ reason, now }) {
+  let fetched;
+  let claimedHermes = false;
+  if (!hermesWorkflowBusy) {
+    hermesWorkflowBusy = true;
+    claimedHermes = true;
+  }
+  try {
+    fetched = await fetchProviderUsageSnapshots({
+      config: getProviderUsageCheckerConfig(),
+      hermesConfig: getTimeCheckinGeneratorConfig(),
+      miniMaxEnabled: !!_settingsController.get("providerUsageMiniMaxEnabled"),
+      now: () => now.getTime(),
+      logger: (msg) => console.warn("Clawd:", msg),
+      previousSnapshot: providerUsageSnapshot,
+    });
+  } finally {
+    if (claimedHermes) hermesWorkflowBusy = false;
+  }
+
+  const staleAfterMs = (_settingsController.get("providerUsageStaleAfterMinutes") || 30) * 60 * 1000;
+  let summary = buildFallbackSummary({ providers: fetched.providers }, { staleAfterMs, now: now.getTime() });
+  let resultKind = fetched.lastResult || "ok";
+  let lastError = fetched.lastError || null;
+
+  if (!hermesWorkflowBusy) {
+    hermesWorkflowBusy = true;
+    try {
+      const hermes = await summarizeProviderUsageWithHermes({
+        config: getTimeCheckinGeneratorConfig(),
+        snapshot: fetched,
+        now,
+        logger: (msg) => console.warn("Clawd:", msg),
+      });
+      if (hermes.ok && hermes.summary) {
+        summary = hermes.summary;
+      } else {
+        resultKind = resultKind === "ok" ? "fallback" : resultKind;
+        lastError = hermes.message || lastError;
+      }
+    } finally {
+      hermesWorkflowBusy = false;
+    }
+  } else {
+    resultKind = resultKind === "ok" ? "fallback" : resultKind;
+    lastError = "Hermes workflow busy; used local usage summary.";
+  }
+
+  providerUsageSnapshot = mergeUsageSnapshot(
+    providerUsageSnapshot,
+    fetched.providers,
+    summary,
+    now.getTime()
+  );
+  providerUsageStatus = {
+    ...providerUsageStatus,
+    enabled: !!_settingsController.get("providerUsageRefreshEnabled"),
+    lastRunAt: now.getTime(),
+    lastResult: resultKind,
+    lastError,
+    lastSummary: summary.summaryText || null,
+  };
+  _settingsController.applyUpdate("providerUsageLastRunAt", now.getTime());
+  broadcastSettingsSnapshot();
+  sendProviderUsageToRenderer();
+  return {
+    status: resultKind === "error" ? "error" : "ok",
+    detail: providerUsageSnapshot,
+  };
+}
+
+function syncProviderUsageFromPrefs() {
+  const enabled = !!_settingsController.get("providerUsageRefreshEnabled");
+  providerUsageStatus = {
+    ...providerUsageStatus,
+    enabled,
+    lastRunAt: _settingsController.get("providerUsageLastRunAt"),
+  };
+  if (!_providerUsageRuntime) return;
+  if (enabled) _providerUsageRuntime.start();
+  else _providerUsageRuntime.stop();
+  const runtimeStatus = _providerUsageRuntime.getStatus();
+  providerUsageStatus = {
+    ...providerUsageStatus,
+    nextRunAt: runtimeStatus.nextRunAt,
+    lastRunAt: runtimeStatus.lastRunAt || providerUsageStatus.lastRunAt,
+    lastResult: runtimeStatus.lastResult || providerUsageStatus.lastResult,
+    lastError: runtimeStatus.lastError || providerUsageStatus.lastError,
+  };
+  broadcastSettingsSnapshot();
+  sendProviderUsageToRenderer();
 }
 
 function updateTranslatorStatusSuccess(direction = null) {
@@ -660,10 +787,11 @@ if (activeTheme._id !== _requestedThemeId || activeTheme._variantId !== _request
 
 // ── CSS <object> sizing (from theme) ──
 function getObjRect(bounds) {
+  const petBounds = getPetStageBounds(bounds);
   const state = _state.getCurrentState();
   const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
-  return hitGeometry.getAssetRectScreen(activeTheme, bounds, state, file)
-    || { x: bounds.x, y: bounds.y, w: bounds.width, h: bounds.height };
+  return hitGeometry.getAssetRectScreen(activeTheme, petBounds, state, file)
+    || { x: petBounds.x, y: petBounds.y, w: petBounds.width, h: petBounds.height };
 }
 
 let win;
@@ -699,6 +827,23 @@ function getCurrentPixelSize(overrideWa) {
   if (!wa) wa = getPrimaryWorkAreaSafe() || SYNTHETIC_WORK_AREA;
   return getProportionalPixelSize(ratio, wa);
 }
+
+function getRenderWindowSize(size) {
+  return {
+    width: size.width + PROVIDER_HUD_GUTTER_PX,
+    height: size.height,
+  };
+}
+
+function getPetStageBounds(bounds) {
+  if (!bounds) return bounds;
+  return {
+    x: bounds.x,
+    y: bounds.y,
+    width: Math.max(1, bounds.width - PROVIDER_HUD_GUTTER_PX),
+    height: bounds.height,
+  };
+}
 let contextMenu;
 let doNotDisturb = false;
 let isQuitting = false;
@@ -731,16 +876,13 @@ function togglePetVisibility() {
   if (_mini.getMiniTransitioning()) return;
   if (petHidden) {
     win.showInactive();
-    if (isLinux) win.setSkipTaskbar(true);
     if (hitWin && !hitWin.isDestroyed()) {
       hitWin.showInactive();
-      if (isLinux) hitWin.setSkipTaskbar(true);
     }
     // Restore any permission bubbles that were hidden
     for (const perm of pendingPermissions) {
       if (perm.bubble && !perm.bubble.isDestroyed()) {
         perm.bubble.showInactive();
-        if (isLinux) perm.bubble.setSkipTaskbar(true);
       }
     }
     syncUpdateBubbleVisibility();
@@ -806,6 +948,7 @@ function syncRendererStateAfterLoad({ includeStartupRecovery = true } = {}) {
   if (_mini.getMiniMode()) {
     sendToRenderer("mini-mode-change", true, _mini.getMiniEdge());
   }
+  sendProviderUsageToRenderer();
   if (doNotDisturb) {
     sendToRenderer("dnd-change", true);
     if (_mini.getMiniMode()) {
@@ -975,12 +1118,10 @@ function createTranslateWin() {
     show: false,
     frame: false,
     transparent: true,
-    alwaysOnTop: !isMac,
+    alwaysOnTop: true,
     resizable: false,
     skipTaskbar: true,
     hasShadow: false,
-    ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-    ...(isMac ? { type: "panel" } : {}),
     focusable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload-translate.js"),
@@ -988,11 +1129,7 @@ function createTranslateWin() {
       contextIsolation: true,
     },
   });
-  if (isWin) translateWin.setAlwaysOnTop(true, "pop-up-menu");
   translateWin.loadFile(path.join(__dirname, "translate-bubble.html"));
-  translateWin.webContents.once("did-finish-load", () => {
-    if (translateWin && !translateWin.isDestroyed()) guardAlwaysOnTop(translateWin);
-  });
   translateWin.on("closed", () => { translateWin = null; });
 }
 
@@ -1160,7 +1297,7 @@ function previewTimeCheckinContext() {
         ? "这是发送给时间问候生成器前的脱敏剪贴板内容。"
         : "This is the sanitized clipboard context before it goes to the time check-in generator.",
       detail,
-      dismissLabel: getUiLang() === "zh" ? "关闭" : "Dismiss",
+      dismissLabel: "Copy that Clawdie",
       requireAction: false,
     });
   }
@@ -1168,6 +1305,82 @@ function previewTimeCheckinContext() {
     status: "ok",
     message: "Showing sanitized context preview.",
     detail: context,
+  };
+}
+
+async function runProviderUsageRefreshNow() {
+  if (!_providerUsageRuntime) {
+    return { status: "error", message: "Provider usage runtime is unavailable." };
+  }
+  await _providerUsageRuntime.triggerNow("manual");
+  return {
+    status: providerUsageStatus.lastResult === "error" ? "error" : "ok",
+    message: providerUsageStatus.lastError || "Provider usage refreshed.",
+    detail: {
+      nextRunAt: providerUsageStatus.nextRunAt,
+      lastRunAt: providerUsageStatus.lastRunAt,
+      lastSummary: providerUsageStatus.lastSummary,
+      snapshot: providerUsageSnapshot,
+    },
+  };
+}
+
+function previewProviderUsageHud() {
+  providerUsageSnapshot = mergeUsageSnapshot(
+    providerUsageSnapshot,
+    {
+      codex: {
+        provider: "codex",
+        status: "ok",
+        label: "Codex",
+        source: "preview",
+        fetchedAt: Date.now(),
+        error: null,
+        warnings: [],
+        windows: [
+          { key: "fiveHour", label: "5h", status: "ok", usedPercent: 24, remainingPercent: 76, detailText: "Core", resetText: "2h left" },
+          { key: "weekly", label: "wk", status: "warning", usedPercent: 58, remainingPercent: 42, detailText: "Week", resetText: "Mon reset" },
+        ],
+      },
+      cursor: {
+        provider: "cursor",
+        status: "warning",
+        label: "Cursor",
+        source: "preview",
+        fetchedAt: Date.now(),
+        error: null,
+        warnings: [],
+        windows: [
+          { key: "auto", label: "Auto", status: "ok", usedPercent: 46, remainingPercent: 54, detailText: "Included", resetText: "Apr 1" },
+          { key: "api", label: "API", status: "critical", usedPercent: 82, remainingPercent: 18, detailText: "On-demand", resetText: "Apr 1" },
+        ],
+      },
+      minimax: {
+        provider: "minimax",
+        status: "warning",
+        label: "MiniMax",
+        source: "preview",
+        fetchedAt: Date.now(),
+        error: null,
+        warnings: [],
+        windows: [
+          { key: "fiveHour", label: "5h", status: "warning", usedPercent: 64, remainingPercent: 36, detailText: "coding-plan-search 98%", resetText: "~48m" },
+        ],
+      },
+    },
+    {
+      overallStatus: "watch",
+      summaryText: "One provider is worth watching.",
+      providerHints: {},
+    },
+    Date.now()
+  );
+  sendProviderUsageToRenderer();
+  broadcastSettingsSnapshot();
+  return {
+    status: "ok",
+    message: "Showing provider usage HUD preview.",
+    detail: providerUsageSnapshot,
   };
 }
 
@@ -1380,11 +1593,12 @@ const STATE_PRIORITY = _state.STATE_PRIORITY;
 
 // ── Hit-test: SVG bounding box → screen coordinates ──
 function getHitRectScreen(bounds) {
+  const petBounds = getPetStageBounds(bounds);
   const state = _state.getCurrentState();
   const file = _state.getCurrentSvg() || (activeTheme && activeTheme.states && activeTheme.states.idle[0]);
   const hit = hitGeometry.getHitRectScreen(
     activeTheme,
-    bounds,
+    petBounds,
     state,
     file,
     _state.getCurrentHitBox(),
@@ -1393,7 +1607,7 @@ function getHitRectScreen(bounds) {
       padY: _mini.getMiniMode() ? 8 : 0,
     }
   );
-  return hit || { left: bounds.x, top: bounds.y, right: bounds.x + bounds.width, bottom: bounds.y + bounds.height };
+  return hit || { left: petBounds.x, top: petBounds.y, right: petBounds.x + petBounds.width, bottom: petBounds.y + petBounds.height };
 }
 
 // ── Main tick — delegated to src/tick.js ──
@@ -1517,9 +1731,89 @@ _timeCheckinRuntime = createTimeCheckinRuntime({
   },
 });
 
+_providerUsageRuntime = createProviderUsageRuntime({
+  fetchSnapshots: async ({ reason, now }) => {
+    let claimedHermes = false;
+    if (!hermesWorkflowBusy) {
+      hermesWorkflowBusy = true;
+      claimedHermes = true;
+    }
+    try {
+      return await fetchProviderUsageSnapshots({
+        config: getProviderUsageCheckerConfig(),
+        hermesConfig: getTimeCheckinGeneratorConfig(),
+        miniMaxEnabled: !!_settingsController.get("providerUsageMiniMaxEnabled"),
+        now: () => now.getTime(),
+        logger: (msg) => console.warn("Clawd:", msg),
+        previousSnapshot: providerUsageSnapshot,
+      });
+    } finally {
+      if (claimedHermes) hermesWorkflowBusy = false;
+    }
+  },
+  summarizeSnapshots: async ({ snapshot, reason, now }) => {
+    const staleAfterMs = (_settingsController.get("providerUsageStaleAfterMinutes") || 30) * 60 * 1000;
+    let summary = buildFallbackSummary({ providers: snapshot.providers }, { staleAfterMs, now: now.getTime() });
+    let lastResult = snapshot.lastResult || "ok";
+    let lastError = snapshot.lastError || null;
+    if (!hermesWorkflowBusy) {
+      hermesWorkflowBusy = true;
+      try {
+        const hermes = await summarizeProviderUsageWithHermes({
+          config: getTimeCheckinGeneratorConfig(),
+          snapshot,
+          now,
+          logger: (msg) => console.warn("Clawd:", msg),
+        });
+        if (hermes.ok && hermes.summary) {
+          summary = hermes.summary;
+        } else {
+          lastResult = lastResult === "ok" ? "fallback" : lastResult;
+          lastError = hermes.message || null;
+        }
+      } finally {
+        hermesWorkflowBusy = false;
+      }
+    } else {
+      lastResult = lastResult === "ok" ? "fallback" : lastResult;
+      lastError = "Hermes workflow busy; used local usage summary.";
+    }
+    const mergedSnapshot = mergeUsageSnapshot(providerUsageSnapshot, snapshot.providers, summary, now.getTime());
+    return {
+      snapshot: mergedSnapshot,
+      lastResult,
+      lastError,
+    };
+  },
+  shouldDefer: () => hermesWorkflowBusy,
+  onUsageUpdate: (snapshot) => {
+    providerUsageSnapshot = snapshot;
+    sendProviderUsageToRenderer();
+  },
+  onStatusChange: (runtimeStatus) => {
+    if (runtimeStatus.lastRunAt) {
+      _settingsController.applyUpdate("providerUsageLastRunAt", runtimeStatus.lastRunAt);
+    }
+    providerUsageStatus = {
+      ...providerUsageStatus,
+      enabled: !!_settingsController.get("providerUsageRefreshEnabled"),
+      nextRunAt: runtimeStatus.nextRunAt,
+      lastRunAt: runtimeStatus.lastRunAt || providerUsageStatus.lastRunAt,
+      lastResult: runtimeStatus.lastResult || providerUsageStatus.lastResult,
+      lastError: runtimeStatus.lastError || providerUsageStatus.lastError,
+      lastSummary: providerUsageSnapshot && providerUsageSnapshot.hermesSummary
+        ? providerUsageSnapshot.hermesSummary.summaryText
+        : providerUsageStatus.lastSummary,
+    };
+    broadcastSettingsSnapshot();
+  },
+});
+
 // ── Terminal focus — delegated to src/focus.js ──
-const _focus = require("./focus")({ _allowSetForeground });
-const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer, runMacFocusCheck } = _focus;
+const _focus = require("./focus")({
+  get win() { return win; },
+});
+const { initFocusHelper, killFocusHelper, focusTerminalWindow, clearMacFocusCooldownTimer, runMacFocusCheck, cleanup: cleanupFocus } = _focus;
 
 // ── HTTP server — delegated to src/server.js ──
 const _serverCtx = {
@@ -1545,74 +1839,14 @@ const _serverCtx = {
 const _server = require("./server")(_serverCtx);
 const { startHttpServer, getHookServerPort } = _server;
 
-// ── alwaysOnTop recovery (Windows DWM / Shell can strip TOPMOST flag) ──
-// The "always-on-top-changed" event only fires from Electron's own SetAlwaysOnTop
-// path — it does NOT fire when Explorer/Start menu/Gallery silently reorder windows.
-// So we keep the event listener for the cases it does catch (Alt/Win key), and add
-// a slow watchdog (20s) to recover from silent shell-initiated z-order drops.
-const WIN_TOPMOST_LEVEL = "pop-up-menu";  // above taskbar-level UI
+// macOS alwaysOnTop recovery: reapplyMacVisibility handles topmost on macOS
 const MAC_TOPMOST_LEVEL = "screen-saver"; // above fullscreen apps on macOS
-const TOPMOST_WATCHDOG_MS = 5_000;
-let topmostWatchdog = null;
-let hwndRecoveryTimer = null;
 
-// Reinitialize HWND input routing after DWM z-order disruptions.
-// showInactive() (ShowWindow SW_SHOWNOACTIVATE) is the same call that makes
-// the right-click context menu restore drag capability — it forces Windows to
-// fully recalculate the transparent window's input target region.
-function scheduleHwndRecovery() {
-  if (!isWin) return;
-  if (hwndRecoveryTimer) clearTimeout(hwndRecoveryTimer);
-  hwndRecoveryTimer = setTimeout(() => {
-    hwndRecoveryTimer = null;
-    if (!win || win.isDestroyed()) return;
-    // Just restore z-order — input routing is handled by hitWin now
-    win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    if (hitWin && !hitWin.isDestroyed()) hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    forceEyeResend = true;
-  }, 1000);
-}
-
-function guardAlwaysOnTop(w) {
-  if (!isWin) return;
-  w.on("always-on-top-changed", (_, isOnTop) => {
-    if (!isOnTop && w && !w.isDestroyed()) {
-      w.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-      if (w === win && !dragLocked && !_mini.getIsAnimating()) {
-        forceEyeResend = true;
-        const { x, y } = win.getBounds();
-        win.setPosition(x + 1, y);
-        win.setPosition(x, y);
-        syncHitWin();
-        scheduleHwndRecovery();
-      }
-    }
-  });
-}
-
-function startTopmostWatchdog() {
-  if (!isWin || topmostWatchdog) return;
-  topmostWatchdog = setInterval(() => {
-    if (win && !win.isDestroyed()) {
-      win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    }
-    // Keep hitWin topmost too
-    if (hitWin && !hitWin.isDestroyed()) {
-      hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    }
-    for (const perm of pendingPermissions) {
-      if (perm.bubble && !perm.bubble.isDestroyed() && perm.bubble.isVisible()) perm.bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    }
-    const updateBubbleWin = _updateBubble.getBubbleWindow();
-    if (updateBubbleWin && !updateBubbleWin.isDestroyed() && updateBubbleWin.isVisible()) {
-      updateBubbleWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    }
-  }, TOPMOST_WATCHDOG_MS);
-}
-
-function stopTopmostWatchdog() {
-  if (topmostWatchdog) { clearInterval(topmostWatchdog); topmostWatchdog = null; }
-}
+// No-op stubs — Windows topmost watchdog removed (macOS uses reapplyMacVisibility)
+function guardAlwaysOnTop() {}
+function scheduleHwndRecovery() {}
+function startTopmostWatchdog() {}
+function stopTopmostWatchdog() {}
 
 function updateLog(msg) {
   if (!updateDebugLog) return;
@@ -1709,6 +1943,8 @@ const _menuCtx = {
   runGlobalActivityTest: (ruleId) => runGlobalActivityTest(ruleId),
   runTimeCheckinNow: () => runTimeCheckinNow(),
   previewTimeCheckinContext: () => previewTimeCheckinContext(),
+  runProviderUsageRefreshNow: () => runProviderUsageRefreshNow(),
+  previewProviderUsageHud: () => previewProviderUsageHud(),
   isAgentLauncherEnabled: () => {
     const snap = _settingsController.getSnapshot();
     const al = snap && snap.agentLauncher;
@@ -1811,6 +2047,20 @@ function wireSettingsSubscribers() {
         syncTimeCheckinFromPrefs();
       } catch (err) {
         console.warn("Clawd: time check-in sync failed:", err && err.message);
+      }
+    }
+    if (
+      "providerUsageHudEnabled" in changes
+      || "providerUsageRefreshEnabled" in changes
+      || "providerUsageMiniMaxEnabled" in changes
+      || "providerUsageStaleAfterMinutes" in changes
+      || "providerUsageChecker" in changes
+      || "providerUsageLastRunAt" in changes
+    ) {
+      try {
+        syncProviderUsageFromPrefs();
+      } catch (err) {
+        console.warn("Clawd: provider usage sync failed:", err && err.message);
       }
     }
 
@@ -2336,6 +2586,9 @@ ipcMain.handle("settings:run-global-activity-test", (_event, ruleId) => runGloba
 ipcMain.handle("settings:get-global-activity-status", () => ({ status: "ok", detail: globalActivityStatus }));
 ipcMain.handle("settings:run-time-checkin-now", () => runTimeCheckinNow());
 ipcMain.handle("settings:preview-time-checkin-context", () => previewTimeCheckinContext());
+ipcMain.handle("settings:run-provider-usage-refresh-now", () => runProviderUsageRefreshNow());
+ipcMain.handle("settings:preview-provider-usage-hud", () => previewProviderUsageHud());
+ipcMain.handle("settings:get-provider-usage-status", () => ({ status: "ok", detail: providerUsageStatus, snapshot: providerUsageSnapshot }));
 
 // Static metadata for the Agents tab: name, eventSource, capabilities.
 // The renderer uses this (alongside the agents snapshot field) to render one
@@ -2498,19 +2751,7 @@ const { setupAutoUpdater, checkForUpdates, getUpdateMenuItem, getUpdateMenuLabel
 let settingsWindow = null;
 
 function getSettingsWindowIcon() {
-  // Don't pass an icon on macOS — the system uses the .app bundle icon.
-  if (isMac) return undefined;
-  if (isWin) {
-    // Packaged build: extraResources puts icon.ico at process.resourcesPath.
-    // Dev: read it from assets/. The files[] glob in package.json doesn't
-    // include assets/icon.ico, so don't try to load it from __dirname/.. in
-    // a packaged build — that path doesn't exist inside app.asar.
-    return app.isPackaged
-      ? path.join(process.resourcesPath, "icon.ico")
-      : path.join(__dirname, "..", "assets", "icon.ico");
-  }
-  // Linux: build config points at assets/icons/, but those aren't shipped in
-  // files[]. Skip the icon — the .desktop file (deb/AppImage) provides one.
+  // macOS uses the .app bundle icon automatically
   return undefined;
 }
 
@@ -2583,6 +2824,14 @@ function createWindow() {
     getNearestWorkArea,
   );
   const size = getCurrentPixelSize(launchSizingWorkArea);
+  const renderSize = getRenderWindowSize(size);
+  const primaryWorkArea = getPrimaryWorkAreaSafe() || SYNTHETIC_WORK_AREA;
+  const startupWindowState = resolveStartupWindowState({
+    prefs,
+    size,
+    primaryWorkArea,
+    getNearestWorkArea,
+  });
 
   // Restore saved position, or default to bottom-right of primary display.
   // Prefs file always exists in the new architecture (defaults are hydrated
@@ -2590,23 +2839,31 @@ function createWindow() {
   // a fresh install gets x=0, y=0 from defaults, and we treat that as "place
   // bottom-right" via the explicit zero check below.
   let startX, startY;
-  if (prefs.miniMode) {
+  if (startupWindowState.restoreMini) {
     const miniPos = _mini.restoreFromPrefs(prefs, size);
-    startX = miniPos.x;
-    startY = miniPos.y;
+    const clamped = clampToScreen(miniPos.x, miniPos.y, renderSize.width, renderSize.height);
+    startX = clamped.x;
+    startY = clamped.y;
+  } else if (startupWindowState.recoveredFromMini) {
+    const clamped = clampToScreen(startupWindowState.x, startupWindowState.y, renderSize.width, renderSize.height);
+    startX = clamped.x;
+    startY = clamped.y;
+    _settingsController.applyUpdate("miniMode", false);
+    _settingsController.applyUpdate("positionSaved", true);
+    _settingsController.applyUpdate("x", startX);
+    _settingsController.applyUpdate("y", startY);
   } else if (prefs.positionSaved) {
-    const clamped = clampToScreen(prefs.x, prefs.y, size.width, size.height);
+    const clamped = clampToScreen(prefs.x, prefs.y, renderSize.width, renderSize.height);
     startX = clamped.x;
     startY = clamped.y;
   } else {
-    const workArea = getPrimaryWorkAreaSafe() || SYNTHETIC_WORK_AREA;
-    startX = workArea.x + workArea.width - size.width - 20;
-    startY = workArea.y + workArea.height - size.height - 20;
+    startX = primaryWorkArea.x + primaryWorkArea.width - renderSize.width - 20;
+    startY = primaryWorkArea.y + primaryWorkArea.height - renderSize.height - 20;
   }
 
   win = new BrowserWindow({
-    width: size.width,
-    height: size.height,
+    width: renderSize.width,
+    height: renderSize.height,
     x: startX,
     y: startY,
     frame: false,
@@ -2617,8 +2874,6 @@ function createWindow() {
     hasShadow: false,
     fullscreenable: false,
     enableLargerThanScreen: true,
-    ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-    ...(isMac ? { type: "panel", roundedCorners: false } : {}),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
       backgroundThrottling: false,
@@ -2629,32 +2884,8 @@ function createWindow() {
   });
 
   win.setFocusable(false);
-
-  // Watchdog (Linux only): prevent accidental window close.
-  // render-process-gone is handled by the global crash-recovery handler below.
-  // On macOS/Windows the WM handles window lifecycle differently.
-  if (isLinux) {
-    win.on("close", (event) => {
-      if (!isQuitting) {
-        event.preventDefault();
-        if (!win.isVisible()) win.showInactive();
-      }
-    });
-    win.on("unresponsive", () => {
-      if (isQuitting) return;
-      console.warn("Clawd: renderer unresponsive — reloading");
-      win.webContents.reload();
-    });
-  }
-
-  if (isWin) {
-    // Windows: use pop-up-menu level to stay above taskbar/shell UI
-    win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-  }
   win.loadFile(path.join(__dirname, "index.html"));
   win.showInactive();
-  // Linux WMs may reset skipTaskbar after showInactive — re-apply explicitly
-  if (isLinux) win.setSkipTaskbar(true);
   // macOS: apply after showInactive() — it resets NSWindowCollectionBehavior
   reapplyMacVisibility();
 
@@ -2691,9 +2922,7 @@ function createWindow() {
       hasShadow: false,
       fullscreenable: false,
       enableLargerThanScreen: true,
-      ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-      ...(isMac ? { type: "panel", roundedCorners: false } : {}),
-      focusable: !isLinux,  // KEY EXPERIMENT: allow activation to avoid WS_EX_NOACTIVATE input routing bugs (Windows-only issue)
+      focusable: false,
       webPreferences: {
         preload: path.join(__dirname, "preload-hit.js"),
         backgroundThrottling: false,
@@ -2706,17 +2935,11 @@ function createWindow() {
     // hitWin has no visual content — clipping is irrelevant.
     hitWin.setShape([{ x: 0, y: 0, width: hw, height: hh }]);
     hitWin.setIgnoreMouseEvents(false);  // PERMANENT — never toggle
-    if (isMac) hitWin.setFocusable(false);
+    hitWin.setFocusable(false);
     hitWin.showInactive();
-    // Linux WMs may reset skipTaskbar after showInactive — re-apply explicitly
-    if (isLinux) hitWin.setSkipTaskbar(true);
-    if (isWin) {
-      hitWin.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
-    }
     // macOS: apply after showInactive() — it resets NSWindowCollectionBehavior
     reapplyMacVisibility();
     hitWin.loadFile(path.join(__dirname, "hit.html"));
-    if (isWin) guardAlwaysOnTop(hitWin);
 
     // Event-level safety net for position sync
     const syncFloatingWindows = () => {
@@ -2747,11 +2970,12 @@ function createWindow() {
     if (_mini.getMiniMode() || _mini.getMiniTransitioning()) return;
     const { x, y } = win.getBounds();
     const size = getCurrentPixelSize();
+    const renderSize = getRenderWindowSize(size);
     // During drag: allow free movement across screens, only prevent
     // the pet from going completely off-screen (keep 25% visible).
     const newX = x + dx, newY = y + dy;
-    const looseClamped = looseClampToDisplays(newX, newY, size.width, size.height);
-    win.setBounds({ ...looseClamped, width: size.width, height: size.height });
+    const looseClamped = looseClampToDisplays(newX, newY, renderSize.width, renderSize.height);
+    win.setBounds({ ...looseClamped, width: renderSize.width, height: renderSize.height });
     syncHitWin();
     if (bubbleFollowPet) repositionFloatingBubbles();
   });
@@ -2782,9 +3006,10 @@ function createWindow() {
       // In proportional mode, also recalculate size for the landing display.
       if (win && !win.isDestroyed()) {
         const size = getCurrentPixelSize();
+        const renderSize = getRenderWindowSize(size);
         const { x, y } = win.getBounds();
-        const clamped = clampToScreen(x, y, size.width, size.height);
-        win.setBounds({ ...clamped, width: size.width, height: size.height });
+        const clamped = clampToScreen(x, y, renderSize.width, renderSize.height);
+        win.setBounds({ ...clamped, width: renderSize.width, height: renderSize.height });
         syncHitWin();
         repositionUpdateBubble();
       }
@@ -2850,9 +3075,6 @@ function createWindow() {
     win.webContents.reload();
   });
 
-  guardAlwaysOnTop(win);
-  startTopmostWatchdog();
-
   // ── Display change: re-clamp window to prevent off-screen ──
   // In proportional mode, also recalculate size based on the new work area.
   screen.on("display-metrics-changed", () => {
@@ -2863,10 +3085,11 @@ function createWindow() {
       return;
     }
     const size = getCurrentPixelSize();
+    const renderSize = getRenderWindowSize(size);
     const { x, y } = win.getBounds();
-    const clamped = clampToScreen(x, y, size.width, size.height);
+    const clamped = clampToScreen(x, y, renderSize.width, renderSize.height);
     if (isProportionalMode() || clamped.x !== x || clamped.y !== y) {
-      win.setBounds({ ...clamped, width: size.width, height: size.height });
+      win.setBounds({ ...clamped, width: renderSize.width, height: renderSize.height });
       syncHitWin();
       repositionUpdateBubble();
     }
@@ -2879,9 +3102,10 @@ function createWindow() {
       return;
     }
     const size = getCurrentPixelSize();
+    const renderSize = getRenderWindowSize(size);
     const { x, y } = win.getBounds();
-    const clamped = clampToScreen(x, y, size.width, size.height);
-    win.setBounds({ ...clamped, width: size.width, height: size.height });
+    const clamped = clampToScreen(x, y, renderSize.width, renderSize.height);
+    win.setBounds({ ...clamped, width: renderSize.width, height: renderSize.height });
     syncHitWin();
     repositionUpdateBubble();
   });
@@ -3127,14 +3351,8 @@ if (!gotTheLock) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (win) {
-      win.showInactive();
-      if (isLinux) win.setSkipTaskbar(true);
-    }
-    if (hitWin && !hitWin.isDestroyed()) {
-      hitWin.showInactive();
-      if (isLinux) hitWin.setSkipTaskbar(true);
-    }
+    if (win) win.showInactive();
+    if (hitWin && !hitWin.isDestroyed()) hitWin.showInactive();
     reapplyMacVisibility();
   });
 
@@ -3158,6 +3376,7 @@ if (!gotTheLock) {
     syncMacTypingMonitorFromPrefs();
     syncGlobalActivityFromPrefs();
     syncTimeCheckinFromPrefs();
+    syncProviderUsageFromPrefs();
     void maybePromptMacTypingPermission();
 
     // Register global shortcut for toggling pet visibility
@@ -3236,11 +3455,11 @@ if (!gotTheLock) {
     _macInputMonitor.stop();
     stopGlobalActivityCollectors();
     if (_globalRulesEngine) _globalRulesEngine.stop();
+    if (_providerUsageRuntime) _providerUsageRuntime.stop();
     if (_codexMonitor) _codexMonitor.stop();
     if (_geminiMonitor) _geminiMonitor.stop();
     stopTopmostWatchdog();
-    if (hwndRecoveryTimer) { clearTimeout(hwndRecoveryTimer); hwndRecoveryTimer = null; }
-    _focus.cleanup();
+    cleanupFocus();
     cleanupTranslateBubble();
     if (hitWin && !hitWin.isDestroyed()) hitWin.destroy();
   });

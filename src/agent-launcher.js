@@ -1,6 +1,6 @@
 "use strict";
 
-const { spawn, execFileSync } = require("child_process");
+const { execFileSync } = require("child_process");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -98,64 +98,17 @@ function macLaunchTerminalDefault({ cwd, command, execFileSyncImpl = execFileSyn
 }
 
 /**
- * Spawn the default graphical terminal with `command` run inside `cwd` (best-effort per OS).
+ * Spawn the default graphical terminal with `command` run inside `cwd` (macOS only).
  * @returns {{ ok: true } | { ok: false, message: string }}
  */
-function launchAgentTerminal({ command, cwd: cwdRaw, _platform = process.platform, _execFileSync = execFileSync, _spawn = spawn } = {}) {
+function launchAgentTerminal({ command, cwd: cwdRaw, _execFileSync = execFileSync } = {}) {
   const cmdErr = validateLauncherCommand(command);
   if (cmdErr) return { ok: false, message: cmdErr };
 
   const { cwd, err: cwdWarn } = resolveLauncherCwd(cwdRaw);
   if (cwdWarn) console.warn("Clawd: agent launcher cwd:", cwdWarn);
 
-  const platform = _platform;
-  if (platform === "darwin") {
-    return macLaunchTerminalDefault({ cwd, command, execFileSyncImpl: _execFileSync });
-  }
-
-  if (platform === "win32") {
-    const cwdWin = cwd.replace(/\//g, "\\");
-    const args = ["/c", "start", "", "/D", cwdWin, "cmd", "/k", command.trim()];
-    try {
-      const child = _spawn("cmd.exe", args, {
-        detached: true,
-        stdio: "ignore",
-        windowsHide: true,
-      });
-      child.unref();
-    } catch (err) {
-      return { ok: false, message: (err && err.message) || String(err) };
-    }
-    return { ok: true };
-  }
-
-  // Linux and other Unix: try common terminal emulators
-  const bashLine = `cd ${shellQuoteBash(cwd)} && exec ${command.trim()}`;
-  const candidates = [
-    { bin: "x-terminal-emulator", args: ["-e", "bash", "-lc", bashLine] },
-    { bin: "gnome-terminal", args: ["--", "bash", "-lc", bashLine] },
-    { bin: "konsole", args: ["-e", "bash", "-lc", bashLine] },
-    { bin: "xfce4-terminal", args: ["-e", "bash", "-lc", bashLine] },
-    { bin: "kitty", args: ["bash", "-lc", bashLine] },
-  ];
-  for (const { bin, args } of candidates) {
-    const which = spawnWhichSync(bin);
-    if (!which) continue;
-    try {
-      const child = _spawn(which, args, {
-        detached: true,
-        stdio: "ignore",
-      });
-      child.unref();
-      return { ok: true };
-    } catch {
-      continue;
-    }
-  }
-  return {
-    ok: false,
-    message: "No supported terminal found (tried x-terminal-emulator, gnome-terminal, konsole, xfce4-terminal, kitty).",
-  };
+  return macLaunchTerminalDefault({ cwd, command, execFileSyncImpl: _execFileSync });
 }
 
 function shellQuoteBash(p) {

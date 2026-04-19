@@ -18,9 +18,9 @@ const HOOK_TO_STATE = {
   afterAgentThought: { state: "thinking", event: "AfterAgentThought" },
 };
 
-const config = getPlatformConfig({ extraTerminals: { win: ["cursor.exe"] } });
+const config = getPlatformConfig();
 const resolve = createPidResolver({
-  agentNames: { win: new Set(["cursor.exe"]), mac: new Set(["cursor"]), linux: new Set(["cursor"]) },
+  agentNames: new Set(["cursor"]),
   platformConfig: config,
 });
 

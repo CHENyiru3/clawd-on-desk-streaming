@@ -89,4 +89,37 @@ describe("hermes-checkin prompt building", () => {
     assert.strictEqual(result.cleanedText, "Warm check-in");
     assert.strictEqual(result.cleanedChanged, true);
   });
+
+  it("uses cleaned output even if hermes exits non-zero", async () => {
+    const spawnMock = mock.method(childProcess, "spawn", () => {
+      const child = new events.EventEmitter();
+      child.stdout = new events.EventEmitter();
+      child.stderr = new events.EventEmitter();
+      child.stdin = {
+        write() {},
+        end() {},
+      };
+      queueMicrotask(() => {
+        child.stdout.emit("data", "session_id: 20260418_1\nFinal: Keep the pace light and finish one clean thing.");
+        child.emit("close", 1);
+      });
+      return child;
+    });
+
+    const result = await runHermesCheckin({
+      config: {
+        command: "hermes",
+        args: ["--resume", "20260417_140020_0b84f5"],
+        timeoutMs: 30000,
+      },
+      context: { entries: [], counts: { totalEntries: 0, redactedEntries: 0 } },
+      now: new Date(2026, 3, 17, 17, 0, 0, 0),
+      slotLabel: "5:00 PM Check-in",
+    });
+
+    spawnMock.mock.restore();
+    assert.strictEqual(result.ok, true);
+    assert.strictEqual(result.cleanedText, "Keep the pace light and finish one clean thing.");
+    assert.strictEqual(result.code, "nonzero_with_output");
+  });
 });

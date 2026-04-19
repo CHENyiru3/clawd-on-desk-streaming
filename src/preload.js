@@ -15,6 +15,7 @@ contextBridge.exposeInMainWorld("electronAPI", {
   onWakeFromDoze: (callback) => ipcRenderer.on("wake-from-doze", () => callback()),
   onDndChange: (callback) => ipcRenderer.on("dnd-change", (_, enabled) => callback(enabled)),
   onMiniModeChange: (cb) => ipcRenderer.on("mini-mode-change", (_, enabled, edge) => cb(enabled, edge)),
+  onProviderUsageUpdate: (cb) => ipcRenderer.on("provider-usage-update", (_, payload) => cb(payload)),
   // Dynamic typing cadence (CSS var modulation)
   onTypingCadenceChange: (cb) => ipcRenderer.on("typing-cadence", (_, cadence) => cb(cadence)),
   // Reaction control (from main, relayed from hit window)

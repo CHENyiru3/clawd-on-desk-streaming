@@ -81,28 +81,6 @@ describe("Agent config modules — data integrity", () => {
         assert.ok(hasEvents, `${agent.id} has no event mappings`);
       });
 
-      // ── processNames format ─────────────────────────────────────────────
-
-      it("win processNames all end with .exe", () => {
-        for (const name of agent.processNames.win) {
-          assert.ok(name.endsWith(".exe"), `${agent.id} win processName "${name}" should end with .exe`);
-        }
-      });
-
-      it("mac processNames do not end with .exe", () => {
-        for (const name of agent.processNames.mac) {
-          assert.ok(!name.endsWith(".exe"), `${agent.id} mac processName "${name}" should not end with .exe`);
-        }
-      });
-
-      if (agent.processNames.linux) {
-        it("linux processNames do not end with .exe", () => {
-          for (const name of agent.processNames.linux) {
-            assert.ok(!name.endsWith(".exe"), `${agent.id} linux processName "${name}" should not end with .exe`);
-          }
-        });
-      }
-
       // ── Capabilities shape ──────────────────────────────────────────────
 
       it("capabilities has all required boolean fields", () => {

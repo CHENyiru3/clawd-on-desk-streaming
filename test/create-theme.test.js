@@ -23,18 +23,10 @@ afterEach(() => {
 });
 
 describe("create-theme defaults", () => {
-  it("resolves the platform-specific user themes directory", () => {
+  it("resolves the macOS user themes directory", () => {
     assert.strictEqual(
-      createTheme.getDefaultThemesRoot("win32", { APPDATA: "C:\\Users\\Ruller\\AppData\\Roaming" }, "C:\\Users\\Ruller"),
-      path.win32.join("C:\\Users\\Ruller\\AppData\\Roaming", "clawd-on-desk", "themes")
-    );
-    assert.strictEqual(
-      createTheme.getDefaultThemesRoot("darwin", {}, "/Users/ruller"),
+      createTheme.getDefaultThemesRoot("/Users/ruller"),
       "/Users/ruller/Library/Application Support/clawd-on-desk/themes"
-    );
-    assert.strictEqual(
-      createTheme.getDefaultThemesRoot("linux", { XDG_CONFIG_HOME: "/tmp/config-home" }, "/home/ruller"),
-      "/tmp/config-home/clawd-on-desk/themes"
     );
   });
 

@@ -290,11 +290,6 @@ function postStateToRunningServer(body, options, callback) {
  * @returns {string|null} absolute path, "node" (Windows), or null (detection failed)
  */
 function resolveNodeBin(options = {}) {
-  const platform = options.platform || process.platform;
-
-  // Windows: bare `node` works fine (PATH is inherited properly)
-  if (platform === "win32") return "node";
-
   const isElectron = options.isElectron !== undefined
     ? options.isElectron
     : !!process.versions.electron;

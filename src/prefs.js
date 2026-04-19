@@ -98,7 +98,7 @@ const SCHEMA = {
       cwd: "/Users/eric_yiru/Desktop/Home",
       command: "hermes",
       args: ["--resume", "20260417_140020_0b84f5"],
-      timeoutMs: 30000,
+      timeoutMs: 120000,
     }),
     normalize: normalizeTimeCheckinGenerator,
   },
@@ -112,6 +112,30 @@ const SCHEMA = {
     default: null,
     allowNull: true,
     validate: (v) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0),
+  },
+  providerUsageHudEnabled: { type: "boolean", default: process.platform === "darwin" },
+  providerUsageRefreshEnabled: { type: "boolean", default: process.platform === "darwin" },
+  providerUsageLastRunAt: {
+    type: "number",
+    default: null,
+    allowNull: true,
+    validate: (v) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0),
+  },
+  providerUsageMiniMaxEnabled: { type: "boolean", default: true },
+  providerUsageStaleAfterMinutes: {
+    type: "number",
+    default: 30,
+    validate: (v) => Number.isInteger(v) && v > 0 && v <= 24 * 60,
+  },
+  providerUsageChecker: {
+    type: "object",
+    defaultFactory: () => ({
+      python: "python3",
+      scriptPath: "/Users/eric_yiru/Desktop/Github/ai_skills/ai-ml-skills/utility/provider-usage-checker/scripts/check_usage.py",
+      timeoutMs: 30000,
+      browser: "auto",
+    }),
+    normalize: normalizeProviderUsageChecker,
   },
   // Theme
   theme: { type: "string", default: "clawd" },
@@ -314,6 +338,21 @@ function normalizeTimeCheckinGenerator(value, defaultsValue) {
   };
   if (typeof value.timeoutMs === "number" && Number.isFinite(value.timeoutMs)) {
     out.timeoutMs = Math.max(TIMECHECKIN_TIMEOUT_MIN, Math.min(TIMECHECKIN_TIMEOUT_MAX, Math.round(value.timeoutMs)));
+  }
+  return out;
+}
+
+function normalizeProviderUsageChecker(value, defaultsValue) {
+  const defaults = defaultsValue || SCHEMA.providerUsageChecker.defaultFactory();
+  if (!value || typeof value !== "object" || Array.isArray(value)) return { ...defaults };
+  const out = { ...defaults };
+  if (typeof value.python === "string" && value.python.trim()) out.python = value.python.trim();
+  if (typeof value.scriptPath === "string" && value.scriptPath.trim()) out.scriptPath = value.scriptPath.trim();
+  if (typeof value.timeoutMs === "number" && Number.isFinite(value.timeoutMs)) {
+    out.timeoutMs = Math.max(TIMECHECKIN_TIMEOUT_MIN, Math.min(TIMECHECKIN_TIMEOUT_MAX, Math.round(value.timeoutMs)));
+  }
+  if (typeof value.browser === "string" && ["auto", "firefox", "chrome", "safari"].includes(value.browser)) {
+    out.browser = value.browser;
   }
   return out;
 }

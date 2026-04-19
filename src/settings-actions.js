@@ -138,9 +138,33 @@ function requireTimeCheckinGenerator(value) {
     typeof value.timeoutMs !== "number"
     || !Number.isFinite(value.timeoutMs)
     || value.timeoutMs < 5000
+    || value.timeoutMs > 300000
+  ) {
+    return { status: "error", message: "timeCheckinGenerator.timeoutMs must be between 5000 and 300000" };
+  }
+  return { status: "ok" };
+}
+
+function requireProviderUsageChecker(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { status: "error", message: "providerUsageChecker must be a plain object" };
+  }
+  if (typeof value.python !== "string" || !value.python.trim()) {
+    return { status: "error", message: "providerUsageChecker.python must be a non-empty string" };
+  }
+  if (typeof value.scriptPath !== "string" || !value.scriptPath.trim()) {
+    return { status: "error", message: "providerUsageChecker.scriptPath must be a non-empty string" };
+  }
+  if (
+    typeof value.timeoutMs !== "number"
+    || !Number.isFinite(value.timeoutMs)
+    || value.timeoutMs < 5000
     || value.timeoutMs > 120000
   ) {
-    return { status: "error", message: "timeCheckinGenerator.timeoutMs must be between 5000 and 120000" };
+    return { status: "error", message: "providerUsageChecker.timeoutMs must be between 5000 and 120000" };
+  }
+  if (!["auto", "firefox", "chrome", "safari"].includes(value.browser)) {
+    return { status: "error", message: "providerUsageChecker.browser must be auto, firefox, chrome, or safari" };
   }
   return { status: "ok" };
 }
@@ -277,6 +301,26 @@ const updateRegistry = {
     }
     return { status: "ok" };
   },
+  providerUsageHudEnabled: requireBoolean("providerUsageHudEnabled"),
+  providerUsageRefreshEnabled: requireBoolean("providerUsageRefreshEnabled"),
+  providerUsageMiniMaxEnabled: requireBoolean("providerUsageMiniMaxEnabled"),
+  providerUsageStaleAfterMinutes(value) {
+    if (!Number.isInteger(value) || value < 1 || value > 24 * 60) {
+      return {
+        status: "error",
+        message: "providerUsageStaleAfterMinutes must be an integer between 1 and 1440",
+      };
+    }
+    return { status: "ok" };
+  },
+  providerUsageLastRunAt(value) {
+    if (value === null) return { status: "ok" };
+    if (typeof value !== "number" || !Number.isFinite(value) || value < 0) {
+      return { status: "error", message: "providerUsageLastRunAt must be null or a non-negative number" };
+    }
+    return { status: "ok" };
+  },
+  providerUsageChecker: requireProviderUsageChecker,
 
   // ── System-backed prefs (object-form: validate + effect pre-commit gate) ──
   //

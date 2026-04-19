@@ -6,11 +6,7 @@
 module.exports = {
   id: "codebuddy",
   name: "CodeBuddy",
-  processNames: {
-    win: ["CodeBuddy.exe", "codebuddy.exe"],
-    mac: ["CodeBuddy"],
-    linux: ["codebuddy", "CodeBuddy"],
-  },
+  processNames: ["CodeBuddy"],
   eventSource: "hook",
   // PascalCase event names — identical to Claude Code hook system
   eventMap: {

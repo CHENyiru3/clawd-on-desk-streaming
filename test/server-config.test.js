@@ -72,11 +72,6 @@ describe("server-config helpers", () => {
     });
   });
 
-  it("resolveNodeBin returns bare node on Windows", () => {
-    const result = serverConfig.resolveNodeBin({ platform: "win32" });
-    assert.strictEqual(result, "node");
-  });
-
   it("resolveNodeBin returns process.execPath when not in Electron", () => {
     const result = serverConfig.resolveNodeBin({
       platform: "darwin",

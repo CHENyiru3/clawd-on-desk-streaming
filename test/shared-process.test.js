@@ -26,29 +26,17 @@ describe("getPlatformConfig()", () => {
 
   it("merges extraTerminals into base set", () => {
     const cfg = getPlatformConfig({
-      extraTerminals: { win: ["custom.exe"], mac: ["custom"], linux: ["custom"] },
+      extraTerminals: ["custom"],
     });
-    // The extra should be present (exact key depends on platform)
-    const isWin = process.platform === "win32";
-    const isLinux = process.platform === "linux";
-    if (isWin) assert.ok(cfg.terminalNames.has("custom.exe"));
-    else if (isLinux) assert.ok(cfg.terminalNames.has("custom"));
-    else assert.ok(cfg.terminalNames.has("custom"));
+    assert.ok(cfg.terminalNames.has("custom"));
   });
 
   it("merges extraEditors into base map", () => {
     const cfg = getPlatformConfig({
-      extraEditors: { win: { "foo.exe": "foo" }, mac: { "foo": "foo" }, linux: { "foo": "foo" } },
+      extraEditors: { "foo": "foo" },
     });
-    // Base editors should still be present
-    const isWin = process.platform === "win32";
-    if (isWin) {
-      assert.strictEqual(cfg.editorMap["code.exe"], "code");
-      assert.strictEqual(cfg.editorMap["foo.exe"], "foo");
-    } else {
-      assert.strictEqual(cfg.editorMap["code"], "code");
-      assert.strictEqual(cfg.editorMap["foo"], "foo");
-    }
+    assert.strictEqual(cfg.editorMap["code"], "code");
+    assert.strictEqual(cfg.editorMap["foo"], "foo");
   });
 
   it("prepends extraEditorPathChecks before defaults", () => {

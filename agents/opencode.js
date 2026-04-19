@@ -5,7 +5,7 @@
 module.exports = {
   id: "opencode",
   name: "OpenCode",
-  processNames: { win: ["opencode.exe"], mac: ["opencode"], linux: ["opencode"] },
+  processNames: ["opencode"],
   eventSource: "plugin-event",
   // Clawd-internal event names (PascalCase) — opencode-plugin/index.mjs translates
   // opencode native events (session.status, message.part.updated, etc) into these.

@@ -62,39 +62,13 @@ function parseClaudeVersion(value) {
   return match ? match[1] : null;
 }
 
-function getWindowsClaudePathSuffixes(pathExtEnv) {
-  const suffixes = [""];
-  const addSuffix = (value) => {
-    if (typeof value !== "string") return;
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    const normalized = trimmed.startsWith(".") ? trimmed.toLowerCase() : `.${trimmed.toLowerCase()}`;
-    if (!suffixes.includes(normalized)) suffixes.push(normalized);
-  };
-
-  addSuffix(".cmd");
-  addSuffix(".ps1");
-
-  if (typeof pathExtEnv === "string") {
-    for (const entry of pathExtEnv.split(";")) {
-      addSuffix(entry);
-    }
-  }
-
-  return suffixes;
-}
-
 function getClaudePathCandidates(options = {}) {
-  const platform = options.platform || process.platform;
   const pathEnv = options.pathEnv !== undefined ? options.pathEnv : process.env.PATH;
   const existsSync = options.existsSync || fs.existsSync;
 
   if (typeof pathEnv !== "string" || !pathEnv) return [];
 
-  const suffixes = platform === "win32"
-    ? getWindowsClaudePathSuffixes(options.pathExt !== undefined ? options.pathExt : process.env.PATHEXT)
-    : [""];
-  const delimiter = platform === "win32" ? ";" : ":";
+  const delimiter = ":";
   const candidates = [];
   const seen = new Set();
 
@@ -103,23 +77,19 @@ function getClaudePathCandidates(options = {}) {
     const dir = rawDir.trim().replace(/^"(.*)"$/, "$1");
     if (!dir) continue;
 
-    for (const suffix of suffixes) {
-      const candidate = path.join(dir, `claude${suffix}`);
-      const key = platform === "win32" ? candidate.toLowerCase() : candidate;
-      if (seen.has(key)) continue;
-      seen.add(key);
+    const candidate = path.join(dir, "claude");
+    if (seen.has(candidate)) continue;
+    seen.add(candidate);
 
-      try {
-        if (existsSync(candidate)) candidates.push(candidate);
-      } catch {}
-    }
+    try {
+      if (existsSync(candidate)) candidates.push(candidate);
+    } catch {}
   }
 
   return candidates;
 }
 
 function getClaudePackageJsonCandidates(candidatePath, options = {}) {
-  const platform = options.platform || process.platform;
   const existsSync = options.existsSync || fs.existsSync;
   const readFileSync = options.readFileSync || fs.readFileSync;
   const realpathSync = options.realpathSync || fs.realpathSync;
@@ -131,9 +101,8 @@ function getClaudePackageJsonCandidates(candidatePath, options = {}) {
   const seen = new Set();
   const addCandidate = (packageJsonPath) => {
     if (typeof packageJsonPath !== "string" || !packageJsonPath) return;
-    const key = platform === "win32" ? packageJsonPath.toLowerCase() : packageJsonPath;
-    if (seen.has(key)) return;
-    seen.add(key);
+    if (seen.has(packageJsonPath)) return;
+    seen.add(packageJsonPath);
 
     try {
       if (existsSync(packageJsonPath)) candidates.push(packageJsonPath);
@@ -201,28 +170,25 @@ function getClaudeVersion(options = {}) {
   const execFileSync = options.execFileSync || require("child_process").execFileSync;
   const candidates = [];
 
-  if (platform === "darwin") {
-    candidates.push(
-      path.join(homeDir, ".local", "bin", "claude"),
-      path.join(homeDir, ".claude", "local", "claude"),
-      "/opt/homebrew/bin/claude",
-      "/usr/local/bin/claude"
-    );
-  }
+  candidates.push(
+    path.join(homeDir, ".local", "bin", "claude"),
+    path.join(homeDir, ".claude", "local", "claude"),
+    "/opt/homebrew/bin/claude",
+    "/usr/local/bin/claude"
+  );
   candidates.push(...getClaudePathCandidates(options));
   candidates.push("claude");
 
   const seen = new Set();
   let fallbackInfo = null;
   for (const candidate of candidates) {
-    const key = platform === "win32" ? candidate.toLowerCase() : candidate;
+    const key = candidate;
     if (seen.has(key)) continue;
     seen.add(key);
     try {
       const out = execFileSync(candidate, ["--version"], {
         encoding: "utf8",
         timeout: 5000,
-        windowsHide: true,
       });
       const version = parseClaudeVersion(out);
       if (!version) continue;
@@ -234,8 +200,6 @@ function getClaudeVersion(options = {}) {
     } catch {}
 
     const fallback = readClaudeVersionFallback(candidate, options);
-    // Prefer a candidate that can answer `--version` directly; keep the first metadata
-    // fallback in search order, but continue scanning in case a later executable works.
     if (fallback && !fallbackInfo) fallbackInfo = fallback;
   }
   return fallbackInfo || { ...UNKNOWN_CLAUDE_VERSION };
@@ -856,7 +820,6 @@ module.exports = {
   isAutoStartRegistered,
   __test: {
     parseClaudeVersion,
-    getWindowsClaudePathSuffixes,
     getClaudePathCandidates,
     getClaudePackageJsonCandidates,
     getClaudeVersionFromPackageJson,

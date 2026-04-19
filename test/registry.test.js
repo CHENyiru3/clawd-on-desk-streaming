@@ -28,42 +28,6 @@ describe("Agent Registry", () => {
     assert.strictEqual(registry.getAgent("nonexistent"), undefined);
   });
 
-  it("should return correct process names for Windows", () => {
-    // Temporarily mock platform if needed — just check the data structure
-    const cc = registry.getAgent("claude-code");
-    assert.deepStrictEqual(cc.processNames.win, ["claude.exe"]);
-    assert.deepStrictEqual(cc.processNames.mac, ["claude"]);
-
-    const codex = registry.getAgent("codex");
-    assert.deepStrictEqual(codex.processNames.win, ["codex.exe"]);
-
-    const copilot = registry.getAgent("copilot-cli");
-    assert.deepStrictEqual(copilot.processNames.win, ["copilot.exe"]);
-
-    const gemini = registry.getAgent("gemini-cli");
-    assert.deepStrictEqual(gemini.processNames.win, ["gemini.exe"]);
-
-    const cursor = registry.getAgent("cursor-agent");
-    assert.deepStrictEqual(cursor.processNames.win, ["Cursor.exe"]);
-  });
-
-  it("should include explicit Linux process names", () => {
-    const cc = registry.getAgent("claude-code");
-    assert.deepStrictEqual(cc.processNames.linux, ["claude"]);
-
-    const codex = registry.getAgent("codex");
-    assert.deepStrictEqual(codex.processNames.linux, ["codex"]);
-
-    const copilot = registry.getAgent("copilot-cli");
-    assert.deepStrictEqual(copilot.processNames.linux, ["copilot"]);
-
-    const gemini = registry.getAgent("gemini-cli");
-    assert.deepStrictEqual(gemini.processNames.linux, ["gemini"]);
-
-    const cursor = registry.getAgent("cursor-agent");
-    assert.deepStrictEqual(cursor.processNames.linux, ["cursor", "Cursor"]);
-  });
-
   it("should aggregate all process names", () => {
     const all = registry.getAllProcessNames();
     assert.ok(all.length >= 5);

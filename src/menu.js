@@ -4,8 +4,6 @@ const { app, BrowserWindow, screen, Menu, Tray, nativeImage } = require("electro
 const path = require("path");
 
 const isMac = process.platform === "darwin";
-const isWin = process.platform === "win32";
-const isLinux = process.platform === "linux";
 
 // Login-item / autostart helpers and the openAtLogin write path live in
 // src/login-item.js + main.js's settings-actions effect. menu.js used to
@@ -104,6 +102,8 @@ module.exports = function initMenu(ctx) {
       { type: "separator" },
       { label: t("runTimeCheckinNow"), click: () => ctx.runTimeCheckinNow && ctx.runTimeCheckinNow() },
       { label: t("previewTimeCheckinContext"), click: () => ctx.previewTimeCheckinContext && ctx.previewTimeCheckinContext() },
+      { label: t("refreshProviderUsageNow"), click: () => ctx.runProviderUsageRefreshNow && ctx.runProviderUsageRefreshNow() },
+      { label: t("previewProviderUsageHud"), click: () => ctx.previewProviderUsageHud && ctx.previewProviderUsageHud() },
       { type: "separator" },
       { label: t("testClipboardReaction"), click: () => ctx.runGlobalActivityTest && ctx.runGlobalActivityTest("clipboardReaction") },
       { label: t("testReadingReaction"), click: () => ctx.runGlobalActivityTest && ctx.runGlobalActivityTest("browserReadingReaction") },
@@ -115,13 +115,8 @@ module.exports = function initMenu(ctx) {
   // ── System tray ──
   function createTray() {
     if (ctx.tray) return;
-    let icon;
-    if (isMac) {
-      icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-iconTemplate.png"));
-      icon.setTemplateImage(true);
-    } else {
-      icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-icon.png")).resize({ width: 32, height: 32 });
-    }
+    const icon = nativeImage.createFromPath(path.join(__dirname, "../assets/tray-iconTemplate.png"));
+    icon.setTemplateImage(true);
     ctx.tray = new Tray(icon);
     ctx.tray.setToolTip("Clawd Desktop Pet");
     buildTrayMenu();
@@ -339,8 +334,6 @@ module.exports = function initMenu(ctx) {
           ctx.win.showInactive();
           if (isMac) {
             ctx.reapplyMacVisibility();
-          } else if (isWin) {
-            ctx.win.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
           }
         }
       },

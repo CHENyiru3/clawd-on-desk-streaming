@@ -120,7 +120,7 @@ describe("updateRegistry pure-data validators", () => {
       cwd: "/Users/eric_yiru/Desktop/Home",
       command: "hermes",
       args: ["--resume", "abc"],
-      timeoutMs: 30000,
+      timeoutMs: 120000,
     }, deps).status, "ok");
     assert.strictEqual(updateRegistry.timeCheckinGenerator({
       cwd: "/Users/eric_yiru/Desktop/Home",
@@ -128,6 +128,12 @@ describe("updateRegistry pure-data validators", () => {
       args: ["--resume"],
       timeoutMs: 30000,
     }, deps).status, "error");
+    assert.strictEqual(updateRegistry.timeCheckinGenerator({
+      cwd: "/Users/eric_yiru/Desktop/Home",
+      command: "hermes",
+      args: ["--resume", "abc"],
+      timeoutMs: 300000,
+    }, deps).status, "ok");
   });
 
   it("object-form boolean fields validate via entry.validate", () => {

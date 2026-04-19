@@ -19,7 +19,7 @@ const HOOK_MAP = {
 
 const config = getPlatformConfig();
 const resolve = createPidResolver({
-  agentNames: { win: new Set(["gemini.exe"]), mac: new Set(["gemini"]), linux: new Set(["gemini"]) },
+  agentNames: new Set(["gemini"]),
   platformConfig: config,
 });
 

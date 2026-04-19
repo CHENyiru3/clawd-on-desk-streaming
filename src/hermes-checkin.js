@@ -1,6 +1,7 @@
 "use strict";
 
 const childProcess = require("child_process");
+const { buildPromptInvocation } = require("./hermes-command");
 const { summarizeClipboardContext } = require("./clipboard-context-summary");
 const { cleanHermesCheckinOutput } = require("./hermes-checkin-cleaner");
 
@@ -108,6 +109,18 @@ function normalizeOutput(stdout) {
   return text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean).join("\n");
 }
 
+function buildResolvedSuccess({ stdout, prompt, cleaned, code = null }) {
+  return {
+    ok: true,
+    rawText: stdout,
+    normalizedText: normalizeOutput(stdout),
+    cleanedText: cleaned.cleanedText,
+    cleanedChanged: cleaned.changed,
+    prompt,
+    code,
+  };
+}
+
 function runHermesCheckin(options = {}) {
   const config = options.config || {};
   const context = options.context || { entries: [], counts: { totalEntries: 0, redactedEntries: 0 } };
@@ -116,10 +129,11 @@ function runHermesCheckin(options = {}) {
   const logger = typeof options.logger === "function" ? options.logger : () => {};
 
   const prompt = buildPrompt({ now, slotLabel, context });
-  const command = typeof config.command === "string" ? config.command.trim() : "";
-  const rawArgs = Array.isArray(config.args) ? config.args.filter((v) => typeof v === "string") : [];
-  const cwd = typeof config.cwd === "string" && config.cwd.trim() ? config.cwd.trim() : undefined;
-  const timeoutMs = Number.isFinite(config.timeoutMs) && config.timeoutMs > 0 ? config.timeoutMs : 30000;
+  const invocation = buildPromptInvocation(config, prompt);
+  const command = invocation.command;
+  const args = invocation.args;
+  const cwd = invocation.cwd;
+  const timeoutMs = Math.max(invocation.timeoutMs, 120000);
 
   if (!command) {
     return Promise.resolve({
@@ -130,10 +144,6 @@ function runHermesCheckin(options = {}) {
       fallbackMessage: buildFallbackMessage({ now, context }),
     });
   }
-
-  const args = command === "hermes"
-    ? ["chat", "-q", prompt, "-Q", ...rawArgs]
-    : rawArgs;
 
   return new Promise((resolve) => {
     let settled = false;
@@ -148,6 +158,17 @@ function runHermesCheckin(options = {}) {
       if (settled) return;
       settled = true;
       try { child.kill("SIGTERM"); } catch {}
+      const normalizedText = normalizeOutput(stdout);
+      const cleaned = cleanHermesCheckinOutput(normalizedText);
+      if (cleaned.valid) {
+        resolve(buildResolvedSuccess({
+          stdout,
+          prompt,
+          cleaned,
+          code: "timeout_with_output",
+        }));
+        return;
+      }
       resolve({
         ok: false,
         code: "timeout",
@@ -182,15 +203,13 @@ function runHermesCheckin(options = {}) {
       clearTimeout(timer);
       const normalizedText = normalizeOutput(stdout);
       const cleaned = cleanHermesCheckinOutput(normalizedText);
-      if (code === 0 && cleaned.valid) {
-        resolve({
-          ok: true,
-          rawText: stdout,
-          normalizedText,
-          cleanedText: cleaned.cleanedText,
-          cleanedChanged: cleaned.changed,
+      if (cleaned.valid) {
+        resolve(buildResolvedSuccess({
+          stdout,
           prompt,
-        });
+          cleaned,
+          code: code === 0 ? null : "nonzero_with_output",
+        }));
         return;
       }
       logger(`Hermes check-in exited with code ${code}: ${stderr || "<no stderr>"}`);
@@ -206,7 +225,7 @@ function runHermesCheckin(options = {}) {
       });
     });
 
-    if (command !== "hermes") {
+    if (invocation.usesStdin) {
       child.stdin.write(prompt);
     }
     child.stdin.end();

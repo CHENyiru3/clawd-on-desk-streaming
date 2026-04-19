@@ -1,11 +1,7 @@
 const { BrowserWindow } = require("electron");
 const path = require("path");
 
-const isLinux = process.platform === "linux";
 const isMac = process.platform === "darwin";
-const isWin = process.platform === "win32";
-const WIN_TOPMOST_LEVEL = "pop-up-menu";
-const LINUX_WINDOW_TYPE = "toolbar";
 const WIDTH = 364;
 const EDGE_MARGIN = 8;
 const GAP = 6;
@@ -49,6 +45,14 @@ function computeBounds({ bubbleFollowPet, workArea, petBounds, hitRect, height, 
   return { x, y, width: WIDTH, height };
 }
 
+function acknowledge(ctx) {
+  if (!ctx || typeof ctx.applyState !== "function") return;
+  const svgOverride = typeof ctx.getSvgOverride === "function"
+    ? ctx.getSvgOverride("attention")
+    : undefined;
+  ctx.applyState("attention", svgOverride);
+}
+
 module.exports = function initTimeCheckinBubble(ctx) {
   let bubble = null;
   let measuredHeight = 0;
@@ -74,20 +78,17 @@ module.exports = function initTimeCheckinBubble(ctx) {
       show: false,
       frame: false,
       transparent: true,
-      alwaysOnTop: !isMac,
+      alwaysOnTop: true,
       resizable: false,
       skipTaskbar: true,
       hasShadow: false,
       focusable: false,
-      ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-      ...(isMac ? { type: "panel" } : {}),
       webPreferences: {
         preload: path.join(__dirname, "preload-time-checkin-bubble.js"),
         nodeIntegration: false,
         contextIsolation: true,
       },
     });
-    if (isWin) bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
     bubble.loadFile(path.join(__dirname, "time-checkin-bubble.html"));
     if (typeof ctx.guardAlwaysOnTop === "function") ctx.guardAlwaysOnTop(bubble);
     bubble.on("closed", () => {
@@ -123,7 +124,6 @@ module.exports = function initTimeCheckinBubble(ctx) {
       return;
     }
     bubble.showInactive();
-    if (isLinux) bubble.setSkipTaskbar(true);
     if (isMac) deferMacFloatingVisibility(ctx, bubble);
     else if (typeof ctx.reapplyMacVisibility === "function") ctx.reapplyMacVisibility();
   }
@@ -169,6 +169,7 @@ module.exports = function initTimeCheckinBubble(ctx) {
     const senderWin = BrowserWindow.fromWebContents(event.sender);
     if (senderWin !== bubble) return;
     hide();
+    acknowledge(ctx);
   }
 
   function cleanup() {
@@ -190,6 +191,7 @@ module.exports = function initTimeCheckinBubble(ctx) {
 };
 
 module.exports.__test = {
+  acknowledge,
   estimateHeight,
   computeBounds,
 };

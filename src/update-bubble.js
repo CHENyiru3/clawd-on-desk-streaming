@@ -1,11 +1,7 @@
 const { BrowserWindow } = require("electron");
 const path = require("path");
 
-const isLinux = process.platform === "linux";
 const isMac = process.platform === "darwin";
-const isWin = process.platform === "win32";
-const WIN_TOPMOST_LEVEL = "pop-up-menu";
-const LINUX_WINDOW_TYPE = "toolbar";
 const WIDTH = 340;
 const EDGE_MARGIN = 8;
 const GAP = 6;
@@ -118,21 +114,17 @@ module.exports = function initUpdateBubble(ctx) {
       show: false,
       frame: false,
       transparent: true,
-      alwaysOnTop: !isMac,
+      alwaysOnTop: true,
       resizable: false,
       skipTaskbar: true,
       hasShadow: false,
       focusable: false,
-      ...(isLinux ? { type: LINUX_WINDOW_TYPE } : {}),
-      ...(isMac ? { type: "panel" } : {}),
       webPreferences: {
         preload: path.join(__dirname, "preload-update-bubble.js"),
         nodeIntegration: false,
         contextIsolation: true,
       },
     });
-
-    if (isWin) bubble.setAlwaysOnTop(true, WIN_TOPMOST_LEVEL);
 
     bubble.loadFile(path.join(__dirname, "update-bubble.html"));
     bubble.on("closed", () => {
@@ -190,7 +182,6 @@ module.exports = function initUpdateBubble(ctx) {
       return;
     }
     bubble.showInactive();
-    if (isLinux) bubble.setSkipTaskbar(true);
     if (isMac) deferMacFloatingVisibility(ctx, bubble);
     else if (typeof ctx.reapplyMacVisibility === "function") ctx.reapplyMacVisibility();
   }

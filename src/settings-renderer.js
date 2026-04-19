@@ -31,6 +31,7 @@ const STRINGS = {
     sectionDiagnostics: "Diagnostics",
     sectionGlobalActivity: "Global Activity",
     sectionTimeCheckins: "Time Check-ins",
+    sectionProviderUsage: "Provider Usage HUD",
     sectionStartup: "Startup",
     sectionBubbles: "Bubbles",
     agentsTitle: "Agents",
@@ -83,6 +84,22 @@ const STRINGS = {
     actionShowBubbleSuccess: "Show Bubble: Success",
     actionShowBubbleError: "Show Bubble: Error",
     actionTestTerminalFocus: "Test Terminal Focus & Position",
+    rowProviderUsageHudEnabled: "Show usage HUD",
+    rowProviderUsageHudEnabledDesc: "Display provider usage bars on the right side of Clawd.",
+    rowProviderUsageRefreshEnabled: "Background refresh",
+    rowProviderUsageRefreshEnabledDesc: "Refresh provider usage every 10 minutes. MiniMax checks can take up to 5 minutes.",
+    rowProviderUsageMiniMaxEnabled: "MiniMax best-effort",
+    rowProviderUsageMiniMaxEnabledDesc: "Keep a MiniMax slot in the HUD even when live usage is unavailable or Hermes cannot initialize.",
+    rowProviderUsageStaleAfter: "Stale threshold (minutes)",
+    rowProviderUsageStaleAfterDesc: "How long a usage snapshot stays fresh before it is treated as stale.",
+    rowProviderUsageStatus: "Provider usage status",
+    rowProviderUsageStatusIdle: "No refreshes have run yet.",
+    rowProviderUsageStatusOk: "Usage HUD is updating normally.",
+    rowProviderUsageStatusPartial: "Some providers are unavailable.",
+    rowProviderUsageStatusFallback: "Using fallback summary logic.",
+    rowProviderUsageStatusError: "Provider refresh failed.",
+    actionRefreshProviderUsageNow: "Refresh Provider Usage Now",
+    actionPreviewProviderUsageHud: "Preview Provider Usage HUD",
     toastActionOk: "Done.",
     rowOpenAtLogin: "Open at login",
     rowOpenAtLoginDesc: "Start Clawd automatically when you log in.",
@@ -247,6 +264,7 @@ const STRINGS = {
     sectionDiagnostics: "诊断",
     sectionGlobalActivity: "全局活动",
     sectionTimeCheckins: "整点问候",
+    sectionProviderUsage: "用量状态条",
     sectionStartup: "启动",
     sectionBubbles: "气泡",
     agentsTitle: "Agent 管理",
@@ -298,6 +316,22 @@ const STRINGS = {
     actionShowBubbleSuccess: "显示气泡：成功",
     actionShowBubbleError: "显示气泡：错误",
     actionTestTerminalFocus: "测试终端聚焦和定位",
+    rowProviderUsageHudEnabled: "显示用量条",
+    rowProviderUsageHudEnabledDesc: "在 Clawd 右侧显示 provider 用量条。",
+    rowProviderUsageRefreshEnabled: "后台刷新",
+    rowProviderUsageRefreshEnabledDesc: "每 10 分钟刷新一次 provider 用量。MiniMax 检查最多可能需要 5 分钟。",
+    rowProviderUsageMiniMaxEnabled: "MiniMax 尽力而为",
+    rowProviderUsageMiniMaxEnabledDesc: "即使暂时拿不到实时用量，或 Hermes 无法初始化，也保留 MiniMax 一栏。",
+    rowProviderUsageStaleAfter: "过期阈值（分钟）",
+    rowProviderUsageStaleAfterDesc: "超过这个时间后，用量快照会被视为过期。",
+    rowProviderUsageStatus: "Provider 用量状态",
+    rowProviderUsageStatusIdle: "还没有运行刷新。",
+    rowProviderUsageStatusOk: "用量条更新正常。",
+    rowProviderUsageStatusPartial: "部分 provider 暂时不可用。",
+    rowProviderUsageStatusFallback: "当前使用本地回退摘要。",
+    rowProviderUsageStatusError: "Provider 刷新失败。",
+    actionRefreshProviderUsageNow: "立即刷新用量",
+    actionPreviewProviderUsageHud: "预览用量条",
     toastActionOk: "已完成。",
     rowOpenAtLogin: "开机自启",
     rowOpenAtLoginDesc: "登录系统时自动启动 Clawd。",
@@ -2090,6 +2124,33 @@ function renderGeneralTab(parent) {
     buildTimeCheckinStatusRow(),
     buildTimeCheckinActionsRow(),
   ]));
+
+  parent.appendChild(buildSection(t("sectionProviderUsage"), [
+    buildSwitchRow({
+      key: "providerUsageHudEnabled",
+      labelKey: "rowProviderUsageHudEnabled",
+      descKey: "rowProviderUsageHudEnabledDesc",
+    }),
+    buildSwitchRow({
+      key: "providerUsageRefreshEnabled",
+      labelKey: "rowProviderUsageRefreshEnabled",
+      descKey: "rowProviderUsageRefreshEnabledDesc",
+    }),
+    buildSwitchRow({
+      key: "providerUsageMiniMaxEnabled",
+      labelKey: "rowProviderUsageMiniMaxEnabled",
+      descKey: "rowProviderUsageMiniMaxEnabledDesc",
+    }),
+    buildTimeCheckinTextRow({
+      key: "providerUsageStaleAfterMinutes",
+      labelKey: "rowProviderUsageStaleAfter",
+      descKey: "rowProviderUsageStaleAfterDesc",
+      format: (value) => String(value || 30),
+      parse: (value) => Number.parseInt(value, 10),
+    }),
+    buildProviderUsageStatusRow(),
+    buildProviderUsageActionsRow(),
+  ]));
 }
 
 function getMacTypingStatusDescKey() {
@@ -2507,6 +2568,47 @@ function buildTimeCheckinActionsRow() {
   ctrl.style.flexWrap = "wrap";
   ctrl.appendChild(buildActionButton("actionRunTimeCheckinNow", () => window.settingsAPI.runTimeCheckinNow()));
   ctrl.appendChild(buildActionButton("actionPreviewTimeCheckinContext", () => window.settingsAPI.previewTimeCheckinContext()));
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildProviderUsageStatusRow() {
+  const status = snapshot && snapshot.providerUsageStatus;
+  let stateText = t("rowProviderUsageStatusIdle");
+  if (status && status.lastResult === "ok") stateText = t("rowProviderUsageStatusOk");
+  else if (status && status.lastResult === "partial") stateText = t("rowProviderUsageStatusPartial");
+  else if (status && status.lastResult === "fallback") stateText = t("rowProviderUsageStatusFallback");
+  else if (status && status.lastResult === "error") stateText = t("rowProviderUsageStatusError");
+  const detailBits = [];
+  if (status && status.nextRunAt) detailBits.push(`Next: ${new Date(status.nextRunAt).toLocaleString()}`);
+  if (status && status.lastRunAt) detailBits.push(`Last: ${new Date(status.lastRunAt).toLocaleString()}`);
+  if (status && status.lastSummary) detailBits.push(status.lastSummary);
+  if (status && status.lastError) detailBits.push(status.lastError);
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowProviderUsageStatus"))}</span>` +
+      `<span class="row-desc">${escapeHtml(stateText)}</span>` +
+      (detailBits.length ? `<span class="row-desc">${escapeHtml(detailBits.join(" · "))}</span>` : "") +
+    `</div>`;
+  return row;
+}
+
+function buildProviderUsageActionsRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("sectionProviderUsage"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowProviderUsageRefreshEnabledDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.gap = "8px";
+  ctrl.style.flexWrap = "wrap";
+  ctrl.appendChild(buildActionButton("actionRefreshProviderUsageNow", () => window.settingsAPI.runProviderUsageRefreshNow()));
+  ctrl.appendChild(buildActionButton("actionPreviewProviderUsageHud", () => window.settingsAPI.previewProviderUsageHud()));
   row.appendChild(ctrl);
   return row;
 }

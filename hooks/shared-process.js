@@ -1,32 +1,17 @@
-// hooks/shared-process.js — Shared process tree walk, stdin reader, platform config
+// hooks/shared-process.js — Shared process tree walk, stdin reader, platform config (macOS only)
 // Used by hook scripts (clawd, copilot, cursor, gemini, kiro, codebuddy).
 // Zero third-party dependencies — only Node built-ins.
 
-// ── Base platform constants ──────────────────────────────────────────────────
+// ── Base platform constants (macOS) ───────────────────────────────────────────
 
-const BASE_TERMINAL_NAMES_WIN = [
-  "windowsterminal.exe", "cmd.exe", "powershell.exe", "pwsh.exe",
-  "code.exe", "alacritty.exe", "wezterm-gui.exe", "mintty.exe",
-  "conemu64.exe", "conemu.exe", "hyper.exe", "tabby.exe",
-  "antigravity.exe", "warp.exe", "iterm.exe", "ghostty.exe",
-];
-const BASE_TERMINAL_NAMES_MAC = [
+const BASE_TERMINAL_NAMES = [
   "terminal", "iterm2", "alacritty", "wezterm-gui", "kitty",
   "hyper", "tabby", "warp", "ghostty",
 ];
-const BASE_TERMINAL_NAMES_LINUX = [
-  "gnome-terminal", "kgx", "konsole", "xfce4-terminal", "tilix",
-  "alacritty", "wezterm", "wezterm-gui", "kitty", "ghostty",
-  "xterm", "lxterminal", "terminator", "tabby", "hyper", "warp",
-];
 
-const SYSTEM_BOUNDARY_WIN = new Set(["explorer.exe", "services.exe", "winlogon.exe", "svchost.exe"]);
-const SYSTEM_BOUNDARY_MAC = new Set(["launchd", "init", "systemd"]);
-const SYSTEM_BOUNDARY_LINUX = new Set(["systemd", "init"]);
+const SYSTEM_BOUNDARY = new Set(["launchd", "init", "systemd"]);
 
-const BASE_EDITOR_MAP_WIN = { "code.exe": "code", "cursor.exe": "cursor" };
-const BASE_EDITOR_MAP_MAC = { "code": "code", "cursor": "cursor" };
-const BASE_EDITOR_MAP_LINUX = { "code": "code", "cursor": "cursor", "code-insiders": "code" };
+const BASE_EDITOR_MAP = { "code": "code", "cursor": "cursor" };
 
 const DEFAULT_EDITOR_PATH_CHECKS = [
   ["visual studio code", "code"],
@@ -36,33 +21,25 @@ const DEFAULT_EDITOR_PATH_CHECKS = [
 // ── getPlatformConfig ────────────────────────────────────────────────────────
 // Returns { terminalNames: Set, systemBoundary: Set, editorMap: Object, editorPathChecks: Array }
 // Options:
-//   extraTerminals: { win?: string[], mac?: string[], linux?: string[] }
-//   extraEditors:   { win?: Object, mac?: Object, linux?: Object }
-//   extraEditorPathChecks: [pattern, editor][]  — prepended before defaults (macOS/Linux full path)
+//   extraTerminals: string[]  (appended to macOS defaults)
+//   extraEditors: Object      (merged with macOS defaults)
+//   extraEditorPathChecks: [pattern, editor][]  — prepended before defaults
 
 function getPlatformConfig(options) {
   const opts = options || {};
-  const isWin = process.platform === "win32";
-  const isLinux = process.platform === "linux";
-
-  const pick = (win, linux, mac) => isWin ? win : (isLinux ? linux : mac);
 
   // Terminal names
-  const baseTerminals = pick(BASE_TERMINAL_NAMES_WIN, BASE_TERMINAL_NAMES_LINUX, BASE_TERMINAL_NAMES_MAC);
   const et = opts.extraTerminals;
-  const extraT = et && pick(et.win, et.linux, et.mac);
-  const terminalNames = extraT && extraT.length ? new Set([...baseTerminals, ...extraT]) : new Set(baseTerminals);
+  const terminalNames = et && et.length ? new Set([...BASE_TERMINAL_NAMES, ...et]) : new Set(BASE_TERMINAL_NAMES);
 
-  // System boundary (no extras)
-  const systemBoundary = pick(SYSTEM_BOUNDARY_WIN, SYSTEM_BOUNDARY_LINUX, SYSTEM_BOUNDARY_MAC);
+  // System boundary
+  const systemBoundary = SYSTEM_BOUNDARY;
 
   // Editor map
-  const baseEditors = pick(BASE_EDITOR_MAP_WIN, BASE_EDITOR_MAP_LINUX, BASE_EDITOR_MAP_MAC);
   const ee = opts.extraEditors;
-  const extraE = ee && pick(ee.win, ee.linux, ee.mac);
-  const editorMap = extraE ? { ...baseEditors, ...extraE } : baseEditors;
+  const editorMap = ee ? { ...BASE_EDITOR_MAP, ...ee } : BASE_EDITOR_MAP;
 
-  // Editor path checks (macOS/Linux full comm path matching)
+  // Editor path checks
   const editorPathChecks = opts.extraEditorPathChecks
     ? [...opts.extraEditorPathChecks, ...DEFAULT_EDITOR_PATH_CHECKS]
     : DEFAULT_EDITOR_PATH_CHECKS;
@@ -76,8 +53,8 @@ function getPlatformConfig(options) {
 //
 // Options:
 //   platformConfig       — result of getPlatformConfig()
-//   agentNames           — { win: Set, mac: Set, linux?: Set }  (linux falls back to mac)
-//   agentCmdlineCheck    — (cmdline: string) => boolean  (optional, for node.exe cmdline probes)
+//   agentNames           — Set of agent process names
+//   agentCmdlineCheck    — (cmdline: string) => boolean  (optional)
 //   startPid             — number (default process.ppid)
 //   maxDepth             — number (default 8)
 
@@ -87,12 +64,7 @@ function createPidResolver(options) {
   const startPid = options.startPid || process.ppid;
   const maxDepth = options.maxDepth || 8;
 
-  const isWin = process.platform === "win32";
-  const isLinux = process.platform === "linux";
-  const pick = (win, linux, mac) => isWin ? win : (isLinux ? linux : mac);
-
-  const an = options.agentNames;
-  const agentNameSet = an ? (pick(an.win, an.linux || an.mac, an.mac) || null) : null;
+  const agentNameSet = options.agentNames || null;
   const agentCmdlineCheck = options.agentCmdlineCheck || null;
 
   let _cached = null;
@@ -111,28 +83,16 @@ function createPidResolver(options) {
     for (let i = 0; i < maxDepth; i++) {
       let name, parentPid;
       try {
-        if (isWin) {
-          const out = execFileSync(
-            "wmic", ["process", "where", `ProcessId=${pid}`, "get", "Name,ParentProcessId", "/format:csv"],
-            { encoding: "utf8", timeout: 1500, windowsHide: true }
-          );
-          const lines = out.trim().split("\n").filter(l => l.includes(","));
-          if (!lines.length) break;
-          const parts = lines[lines.length - 1].split(",");
-          name = (parts[1] || "").trim().toLowerCase();
-          parentPid = parseInt(parts[2], 10);
-        } else {
-          const ppidOut = execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8", timeout: 1000 }).trim();
-          const commOut = execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8", timeout: 1000 }).trim();
-          name = require("path").basename(commOut).toLowerCase();
-          if (!detectedEditor) {
-            const fullLower = commOut.toLowerCase();
-            for (const [pattern, editor] of editorPathChecks) {
-              if (fullLower.includes(pattern)) { detectedEditor = editor; break; }
-            }
+        const ppidOut = execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8", timeout: 1000 }).trim();
+        const commOut = execFileSync("ps", ["-o", "comm=", "-p", String(pid)], { encoding: "utf8", timeout: 1000 }).trim();
+        name = require("path").basename(commOut).toLowerCase();
+        if (!detectedEditor) {
+          const fullLower = commOut.toLowerCase();
+          for (const [pattern, editor] of editorPathChecks) {
+            if (fullLower.includes(pattern)) { detectedEditor = editor; break; }
           }
-          parentPid = parseInt(ppidOut, 10);
         }
+        parentPid = parseInt(ppidOut, 10);
       } catch { break; }
 
       pidChain.push(pid);
@@ -142,12 +102,9 @@ function createPidResolver(options) {
       if (!agentPid) {
         if (agentNameSet && agentNameSet.has(name)) {
           agentPid = pid;
-        } else if (agentCmdlineCheck && (name === "node.exe" || name === "node")) {
+        } else if (agentCmdlineCheck && name === "node") {
           try {
-            const cmdOut = isWin
-              ? execFileSync("wmic", ["process", "where", `ProcessId=${pid}`, "get", "CommandLine", "/format:csv"],
-                  { encoding: "utf8", timeout: 500, windowsHide: true })
-              : execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 500 });
+            const cmdOut = execFileSync("ps", ["-o", "command=", "-p", String(pid)], { encoding: "utf8", timeout: 500 });
             if (agentCmdlineCheck(cmdOut)) agentPid = pid;
           } catch {}
         }

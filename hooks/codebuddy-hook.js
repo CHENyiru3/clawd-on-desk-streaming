@@ -20,16 +20,11 @@ const HOOK_MAP = {
 };
 
 const config = getPlatformConfig({
-  extraTerminals: { win: ["codebuddy.exe"] },
-  extraEditors: {
-    win: { "codebuddy.exe": "codebuddy" },
-    mac: { "codebuddy": "codebuddy" },
-    linux: { "codebuddy": "codebuddy" },
-  },
+  extraEditors: { "codebuddy": "codebuddy" },
   extraEditorPathChecks: [["codebuddy", "codebuddy"]],
 });
 const resolve = createPidResolver({
-  agentNames: { win: new Set(["codebuddy.exe"]), mac: new Set(["codebuddy"]), linux: new Set(["codebuddy"]) },
+  agentNames: new Set(["codebuddy"]),
   platformConfig: config,
 });
 

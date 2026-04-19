@@ -360,7 +360,6 @@ function initUpdater(ctx, deps = {}) {
           execFileFn("npm", ["install", "--no-fund", "--no-audit"], {
             cwd: repoRoot,
             timeout: 120000,
-            shell: process.platform === "win32",
           }, (err) => (err ? reject(err) : resolve()));
         });
       } catch (err) {

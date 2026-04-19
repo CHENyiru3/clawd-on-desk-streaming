@@ -25,7 +25,7 @@ if (!state) process.exit(0);
 
 const config = getPlatformConfig();
 const resolve = createPidResolver({
-  agentNames: { win: new Set(["copilot.exe"]), mac: new Set(["copilot"]) },
+  agentNames: new Set(["copilot"]),
   agentCmdlineCheck: (cmd) => cmd.includes("@github/copilot"),
   platformConfig: config,
 });
