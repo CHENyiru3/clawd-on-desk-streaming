@@ -7,7 +7,6 @@ const {
   providerGroupHasUsableData,
   markProviderGroupStale,
 } = require("./provider-usage-model");
-const { fetchMiniMaxUsage } = require("./minimax-usage-fetcher");
 
 function runChecker(config, provider, execFileImpl = childProcess.execFile) {
   const python = config && config.python ? config.python : "python3";
@@ -58,32 +57,22 @@ function buildProviderError(provider, error, now) {
 
 async function fetchProviderUsageSnapshots(options = {}) {
   const config = options.config || {};
-  const hermesConfig = options.hermesConfig || {};
   const now = typeof options.now === "function" ? options.now() : Date.now();
   const execFileImpl = options.execFileImpl || childProcess.execFile;
-  const fetchMiniMaxUsageImpl = options.fetchMiniMaxUsageImpl || fetchMiniMaxUsage;
-  const logger = typeof options.logger === "function" ? options.logger : () => {};
   const previousSnapshot = options.previousSnapshot || null;
 
-  const [codexResult, cursorResult, minimaxGroup] = await Promise.all([
+  const [codexResult, minimaxResult] = await Promise.all([
     runChecker(config, "codex", execFileImpl),
-    runChecker(config, "cursor", execFileImpl),
-    fetchMiniMaxUsageImpl({
-      enabled: options.miniMaxEnabled !== false,
-      now: () => now,
-      hermesConfig,
-      logger,
-    }),
+    runChecker(config, "minimax", execFileImpl),
   ]);
 
   const providers = {
     codex: codexResult.ok
       ? normalizeUsageSnapshot("codex", codexResult.data, now)
       : buildProviderError("codex", codexResult.error, now),
-    cursor: cursorResult.ok
-      ? normalizeUsageSnapshot("cursor", cursorResult.data, now)
-      : buildProviderError("cursor", cursorResult.error, now),
-    minimax: minimaxGroup,
+    minimax: minimaxResult.ok
+      ? normalizeUsageSnapshot("minimax", minimaxResult.data, now)
+      : buildProviderError("minimax", minimaxResult.error, now),
   };
 
   let miniMaxError = null;

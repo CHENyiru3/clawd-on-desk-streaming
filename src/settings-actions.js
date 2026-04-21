@@ -986,6 +986,23 @@ const commandRegistry = {
   setThemeOverrideDisabled,
   resetThemeOverrides,
   setThemeSelection,
+  clearHermesHistory(payload, deps) {
+    if (!deps || typeof deps.clearHermesHistory !== "function") {
+      return { status: "error", message: "clearHermesHistory requires clearHermesHistory dep" };
+    }
+    try {
+      deps.clearHermesHistory();
+      return { status: "ok" };
+    } catch (err) {
+      return { status: "error", message: `clearHermesHistory: ${err && err.message}` };
+    }
+  },
+  testHermesChat(payload, deps) {
+    if (!deps || typeof deps.testHermesChat !== "function") {
+      return { status: "error", message: "testHermesChat requires testHermesChat dep" };
+    }
+    return deps.testHermesChat(payload);
+  },
 };
 
 module.exports = {

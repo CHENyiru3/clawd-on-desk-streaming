@@ -208,7 +208,7 @@ function renderProviderUsageHud() {
   }
   providerUsageHud.classList.remove("hidden");
   const cards = providerUsageSnapshot.providers;
-  providerUsageHud.innerHTML = ["codex", "cursor", "minimax"].map((provider) => {
+  providerUsageHud.innerHTML = ["codex", "minimax"].map((provider) => {
     const card = cards[provider] || { label: provider, status: "unavailable", windows: [] };
     const windows = Array.isArray(card.windows) ? card.windows : [];
     const windowsMarkup = windows.map((windowInfo) => {

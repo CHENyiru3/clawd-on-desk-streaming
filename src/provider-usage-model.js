@@ -1,15 +1,11 @@
 "use strict";
 
-const PROVIDER_ORDER = Object.freeze(["codex", "cursor", "minimax"]);
+const PROVIDER_ORDER = Object.freeze(["codex", "minimax"]);
 
 const PROVIDER_WINDOW_MAP = Object.freeze({
   codex: [
     { key: "fiveHour", label: "5h", sourceKeys: ["primary"], sourceNames: ["5h"] },
     { key: "weekly", label: "wk", sourceKeys: ["secondary"], sourceNames: ["weekly"] },
-  ],
-  cursor: [
-    { key: "auto", label: "Auto", sourceKeys: ["primary"], sourceNames: ["included_plan", "plan", "auto"] },
-    { key: "api", label: "API", sourceKeys: ["secondary"], sourceNames: ["on_demand", "api"] },
   ],
   minimax: [
     { key: "fiveHour", label: "5h", sourceKeys: ["primary"], sourceNames: ["5h", "five_hour"] },
@@ -18,7 +14,6 @@ const PROVIDER_WINDOW_MAP = Object.freeze({
 
 function providerLabel(provider) {
   if (provider === "codex") return "Codex";
-  if (provider === "cursor") return "Cursor";
   if (provider === "minimax") return "MiniMax";
   return provider;
 }
@@ -109,7 +104,6 @@ function createEmptyUsageSnapshot() {
     stale: true,
     providers: {
       codex: createEmptyProviderGroup("codex"),
-      cursor: createEmptyProviderGroup("cursor"),
       minimax: createEmptyProviderGroup("minimax"),
     },
     hermesSummary: {
@@ -130,7 +124,7 @@ function findWindowSpec(provider, rawWindow, windowKey) {
   return specs.find((spec) => spec.sourceNames.includes(rawName)) || null;
 }
 
-function buildWindowFromRaw(provider, spec, rawWindow, extras = {}) {
+function buildWindowFromRaw(provider, spec, rawWindow, extras) {
   if (!rawWindow || typeof rawWindow !== "object") {
     return createUsageWindow({
       key: spec.key,
@@ -146,13 +140,7 @@ function buildWindowFromRaw(provider, spec, rawWindow, extras = {}) {
       ? rawWindow.used_percent
       : (typeof remainingPercent === "number" ? 100 - remainingPercent : null)
   );
-  const detailText = typeof rawWindow.detail_text === "string"
-    ? rawWindow.detail_text
-    : spec.key === "auto" && typeof extras.plan_breakdown === "object"
-      ? "Included plan"
-      : spec.key === "api"
-        ? "On-demand"
-        : null;
+  const detailText = typeof rawWindow.detail_text === "string" ? rawWindow.detail_text : null;
 
   return createUsageWindow({
     key: spec.key,

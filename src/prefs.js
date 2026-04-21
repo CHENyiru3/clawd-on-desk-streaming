@@ -178,6 +178,17 @@ const SCHEMA = {
     }),
     normalize: normalizeAgentLauncher,
   },
+  // Hermes Chat panel configuration (command, args, cwd, timeoutMs).
+  // Used by hermes-chat.js to spawn `hermes chat -q` per turn.
+  hermesChat: {
+    type: "object",
+    defaultFactory: () => ({
+      command: "hermes",
+      args: [],
+      cwd: "",
+      timeoutMs: 180000,
+    }),
+  },
 };
 
 const SCHEMA_KEYS = Object.freeze(Object.keys(SCHEMA));

@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+/* ── Theme variables ── */
+:root {
+  --card-bg: #ffffff;
+  --card-border: rgba(0, 0, 0, 0.08);
+  --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.12), 0 1px 3px rgba(0, 0, 0, 0.08);
+  --card-inset: none;
+  --text-primary: #18181b;
+  --text-secondary: #71717a;
+  --text-muted: #a1a1aa;
+  --header-color: #374151;
+  --msg-user-bg: #d97757;
+  --msg-user-color: #fff;
+  --msg-assistant-bg: #f4f4f5;
+  --msg-assistant-color: #18181b;
+  --input-bg: #f4f4f5;
+  --input-border: rgba(0, 0, 0, 0.08);
+  --input-focus-border: #d97757;
+  --input-color: #18181b;
+  --scroll-thumb: rgba(0, 0, 0, 0.15);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.25);
+  --titlebar-bg: #f4f4f5;
+  --titlebar-color: #374151;
+  --dnd-bg: #fef3c7;
+  --dnd-color: #92400e;
+  --btn-close-hover: #fee2e2;
+  --btn-clear-hover: #fef3c7;
+  --thinking-dot: #d97757;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --card-bg: #18181b;
+    --card-border: rgba(255, 255, 255, 0.1);
+    --card-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    --card-inset: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    --text-primary: #f4f4f5;
+    --text-secondary: #a1a1aa;
+    --text-muted: #71717a;
+    --header-color: #e4e4e7;
+    --msg-user-bg: #c4684a;
+    --msg-user-color: #fff;
+    --msg-assistant-bg: #27272a;
+    --msg-assistant-color: #e4e4e7;
+    --input-bg: #27272a;
+    --input-border: rgba(255, 255, 255, 0.08);
+    --input-focus-border: #d97757;
+    --input-color: #f4f4f5;
+    --scroll-thumb: rgba(255, 255, 255, 0.1);
+    --scroll-thumb-hover: rgba(255, 255, 255, 0.2);
+    --titlebar-bg: #27272a;
+    --titlebar-color: #e4e4e7;
+    --dnd-bg: #451a03;
+    --dnd-color: #fcd34d;
+    --btn-close-hover: #7f1d1d;
+    --btn-clear-hover: #713f12;
+    --thinking-dot: #d97757;
+  }
+}
+
+html, body {
+  width: 100%; height: 100%;
+  margin: 0;
+  background: transparent;
+  overflow: hidden;
+  user-select: none;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+body { padding: 0; }
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 14px;
+  box-shadow: var(--card-shadow), var(--card-inset, none);
+  color: var(--text-primary);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateX(-40px);
+  transition: opacity 0.3s ease, transform 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+.panel.visible {
+  opacity: 1;
+  transform: translateX(0);
+}
+.panel.closing {
+  opacity: 0;
+  transform: translateX(-40px);
+}
+
+/* ── Title bar ── */
+.titlebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 10px;
+  background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+.titlebar-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--titlebar-color);
+  letter-spacing: 0.03em;
+}
+.titlebar-actions {
+  display: flex;
+  gap: 4px;
+}
+.titlebar-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 700;
+  transition: background 0.15s ease;
+  background: transparent;
+  color: var(--text-muted);
+  line-height: 1;
+}
+.titlebar-btn:hover {
+  background: var(--btn-close-hover);
+  color: #b91c1c;
+}
+.titlebar-btn.clear-btn:hover {
+  background: var(--btn-clear-hover);
+  color: #92400e;
+}
+.titlebar-btn:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+/* ── DND indicator ── */
+.dnd-indicator {
+  display: none;
+  padding: 5px 10px;
+  background: var(--dnd-bg);
+  color: var(--dnd-color);
+  font-size: 11px;
+  font-weight: 500;
+  text-align: center;
+  flex-shrink: 0;
+}
+.dnd-indicator.visible { display: block; }
+
+/* ── Message history ── */
+.history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.history::-webkit-scrollbar { width: 5px; }
+.history::-webkit-scrollbar-track { background: transparent; }
+.history::-webkit-scrollbar-thumb { background: var(--scroll-thumb); border-radius: 3px; }
+.history::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); }
+
+/* ── Message bubble ── */
+.msg {
+  display: flex;
+  flex-direction: column;
+  max-width: 85%;
+  animation: msgIn 0.2s ease;
+}
+@keyframes msgIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.msg.user { align-self: flex-end; }
+.msg.assistant { align-self: flex-start; }
+
+.msg-role {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 3px;
+  color: var(--text-muted);
+}
+.msg.user .msg-role { text-align: right; }
+.msg.assistant .msg-role { text-align: left; }
+
+.msg-bubble {
+  padding: 8px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+.msg.user .msg-bubble {
+  background: var(--msg-user-bg);
+  color: var(--msg-user-color);
+  border-bottom-right-radius: 4px;
+}
+.msg.assistant .msg-bubble {
+  background: var(--msg-assistant-bg);
+  color: var(--msg-assistant-color);
+  border-bottom-left-radius: 4px;
+}
+
+/* ── Streaming cursor ── */
+.msg-bubble .cursor {
+  display: inline-block;
+  width: 2px;
+  height: 13px;
+  background: var(--thinking-dot);
+  margin-left: 1px;
+  vertical-align: text-bottom;
+  animation: blink 1s step-end infinite;
+}
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+/* ── Thinking indicator ── */
+.thinking-row {
+  display: none;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.thinking-row.visible { display: flex; align-items: center; gap: 4px; }
+.thinking-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+.thinking-dots {
+  display: flex;
+  gap: 3px;
+  align-items: center;
+}
+.thinking-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--thinking-dot);
+  animation: dotPulse 1.2s ease-in-out infinite;
+}
+.thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+.thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+@keyframes dotPulse {
+  0%, 80%, 100% { transform: scale(0.7); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
+}
+
+/* ── Empty state ── */
+.empty-state {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 20px;
+}
+.empty-icon {
+  font-size: 28px;
+  opacity: 0.3;
+}
+.empty-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.empty-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  text-align: center;
+  line-height: 1.5;
+}
+
+/* ── Input row ── */
+.input-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+.input-field {
+  flex: 1;
+  min-height: 36px;
+  max-height: 100px;
+  padding: 8px 12px;
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--input-color);
+  line-height: 1.4;
+  resize: none;
+  outline: none;
+  transition: border-color 0.2s ease;
+  overflow-y: auto;
+  field-sizing: content;
+}
+.input-field:focus {
+  border-color: var(--input-focus-border);
+}
+.input-field::placeholder { color: var(--text-muted); }
+.input-field:disabled { opacity: 0.5; cursor: not-allowed; }
+.send-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 9px;
+  border: none;
+  background: #d97757;
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 15px;
+  transition: background 0.15s ease, transform 0.1s ease;
+  flex-shrink: 0;
+}
+.send-btn:hover:not(:disabled) { background: #c4684a; }
+.send-btn:active:not(:disabled) { transform: scale(0.92); }
+.send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+</style>
+</head>
+<body>
+<div class="panel" id="panel">
+
+  <!-- Title bar -->
+  <div class="titlebar">
+    <span class="titlebar-title" id="titleText">Hermes</span>
+    <div class="titlebar-actions">
+      <button class="titlebar-btn clear-btn" id="btnClear" title="Clear">✕</button>
+      <button class="titlebar-btn" id="btnClose" title="Close">×</button>
+    </div>
+  </div>
+
+  <!-- DND indicator -->
+  <div class="dnd-indicator" id="dndIndicator"></div>
+
+  <!-- Message history -->
+  <div class="history" id="history">
+    <div class="empty-state" id="emptyState">
+      <div class="empty-icon">💬</div>
+      <div class="empty-title" id="emptyTitle"></div>
+      <div class="empty-sub" id="emptySub"></div>
+    </div>
+  </div>
+
+  <!-- Thinking indicator -->
+  <div class="thinking-row" id="thinkingRow">
+    <div class="thinking-dots">
+      <div class="thinking-dot"></div>
+      <div class="thinking-dot"></div>
+      <div class="thinking-dot"></div>
+    </div>
+    <span class="thinking-label" id="thinkingLabel"></span>
+  </div>
+
+  <!-- Input row -->
+  <div class="input-row">
+    <textarea
+      class="input-field"
+      id="inputField"
+      placeholder=""
+      rows="1"
+      maxlength="2000"
+    ></textarea>
+    <button class="send-btn" id="btnSend" title="Send">↑</button>
+  </div>
+
+</div>
+
+<script>
+const panel = document.getElementById("panel");
+const historyEl = document.getElementById("history");
+const emptyState = document.getElementById("emptyState");
+const emptyTitle = document.getElementById("emptyTitle");
+const emptySub = document.getElementById("emptySub");
+const thinkingRow = document.getElementById("thinkingRow");
+const thinkingLabel = document.getElementById("thinkingLabel");
+const inputField = document.getElementById("inputField");
+const btnSend = document.getElementById("btnSend");
+const btnClear = document.getElementById("btnClear");
+const btnClose = document.getElementById("btnClose");
+const dndIndicator = document.getElementById("dndIndicator");
+const titleText = document.getElementById("titleText");
+
+let currentLang = "en";
+let busy = false;
+
+// ── i18n strings ──
+const STRINGS = {
+  en: {
+    title: "Hermes",
+    placeholder: "Ask Hermes anything…",
+    emptyTitle: "Chat with Hermes",
+    emptySub: "Your personal AI agent with\npersistent memory and skills.",
+    thinking: "Thinking…",
+    sending: "Sending…",
+    dndActive: "Do not disturb — chat paused",
+    error: "Error",
+  },
+  zh: {
+    title: "Hermes",
+    placeholder: "问 Hermes 任何问题…",
+    emptyTitle: "与 Hermes 对话",
+    emptySub: "你的个人 AI 助手\n拥有持久记忆和技能。",
+    thinking: "思考中…",
+    sending: "发送中…",
+    dndActive: "免打扰模式 — 对话已暂停",
+    error: "错误",
+  },
+};
+
+function t(key) {
+  return (STRINGS[currentLang] && STRINGS[currentLang][key]) || STRINGS.en[key] || key;
+}
+
+function applyLang(lang) {
+  currentLang = lang || "en";
+  titleText.textContent = t("title");
+  inputField.placeholder = t("placeholder");
+  emptyTitle.textContent = t("emptyTitle");
+  emptySub.textContent = t("emptySub");
+  thinkingLabel.textContent = t("thinking");
+  if (!busy) thinkingRow.classList.remove("visible");
+}
+
+applyLang("en");
+
+// ── Reveal panel with slide-in ──
+function reveal() {
+  panel.classList.remove("closing");
+  requestAnimationFrame(() => {
+    panel.classList.add("visible");
+  });
+}
+
+// ── Add a message to history ──
+let streamingMsgEl = null;
+
+function addMessage(role, content) {
+  emptyState.style.display = "none";
+
+  // Remove streaming cursor if present
+  if (streamingMsgEl) {
+    const cursor = streamingMsgEl.querySelector(".cursor");
+    if (cursor) cursor.remove();
+    streamingMsgEl = null;
+  }
+
+  const msg = document.createElement("div");
+  msg.className = `msg ${role}`;
+
+  const roleLabel = document.createElement("div");
+  roleLabel.className = "msg-role";
+  roleLabel.textContent = role === "user" ? "You" : "Hermes";
+
+  const bubble = document.createElement("div");
+  bubble.className = "msg-bubble";
+  bubble.textContent = content;
+
+  msg.appendChild(roleLabel);
+  msg.appendChild(bubble);
+  historyEl.appendChild(msg);
+  scrollToBottom();
+  return msg;
+}
+
+// ── Streaming: start a new assistant message ──
+function startAssistantMessage() {
+  emptyState.style.display = "none";
+  if (streamingMsgEl) {
+    const cursor = streamingMsgEl.querySelector(".cursor");
+    if (cursor) cursor.remove();
+  }
+
+  const msg = document.createElement("div");
+  msg.className = "msg assistant";
+
+  const roleLabel = document.createElement("div");
+  roleLabel.className = "msg-role";
+  roleLabel.textContent = "Hermes";
+
+  const bubble = document.createElement("div");
+  bubble.className = "msg-bubble";
+
+  // Blinking cursor
+  const cursor = document.createElement("span");
+  cursor.className = "cursor";
+  bubble.appendChild(cursor);
+
+  msg.appendChild(roleLabel);
+  msg.appendChild(bubble);
+  historyEl.appendChild(msg);
+  streamingMsgEl = msg;
+  scrollToBottom();
+}
+
+// ── Append token to streaming message ──
+function appendToken(token) {
+  if (!streamingMsgEl) startAssistantMessage();
+  const bubble = streamingMsgEl.querySelector(".msg-bubble");
+  // Remove cursor, append text, re-add cursor
+  const cursor = bubble.querySelector(".cursor");
+  if (cursor) cursor.remove();
+  // Simple append — Hermes streams text tokens
+  bubble.textContent = (bubble.textContent || "") + token;
+  bubble.appendChild(cursor || createCursor());
+  scrollToBottom();
+}
+
+function createCursor() {
+  const c = document.createElement("span");
+  c.className = "cursor";
+  return c;
+}
+
+function finishStreaming() {
+  if (!streamingMsgEl) return;
+  const cursor = streamingMsgEl.querySelector(".cursor");
+  if (cursor) cursor.remove();
+  streamingMsgEl = null;
+  scrollToBottom();
+}
+
+function scrollToBottom() {
+  requestAnimationFrame(() => {
+    historyEl.scrollTop = historyEl.scrollHeight;
+  });
+}
+
+// ── Input handling ──
+function setBusy(state) {
+  busy = state;
+  inputField.disabled = state;
+  btnSend.disabled = state;
+  thinkingRow.classList.toggle("visible", state);
+  if (state) {
+    thinkingLabel.textContent = t("sending");
+  } else {
+    thinkingLabel.textContent = t("thinking");
+  }
+}
+
+function submitInput() {
+  const text = inputField.value.trim();
+  if (!text || busy) return;
+  addMessage("user", text);
+  inputField.value = "";
+  setBusy(true);
+  window.chatAPI.send(text);
+}
+
+// ── Event listeners ──
+inputField.addEventListener("keydown", (e) => {
+  if (e.key === "Enter" && !e.shiftKey) {
+    e.preventDefault();
+    submitInput();
+  }
+});
+
+btnSend.addEventListener("click", submitInput);
+
+btnClose.addEventListener("click", () => {
+  window.chatAPI.close();
+});
+
+btnClear.addEventListener("click", () => {
+  window.chatAPI.clear();
+  historyEl.innerHTML = "";
+  streamingMsgEl = null;
+  historyEl.appendChild(emptyState);
+  emptyState.style.display = "flex";
+});
+
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    window.chatAPI.close();
+  }
+});
+
+// ── IPC listeners ──
+window.chatAPI.onToken((data) => {
+  const { chunk, isFirst, isLast } = data;
+  if (isFirst) {
+    // First token received → assistant message started
+    startAssistantMessage();
+    setBusy(true);
+  }
+  if (chunk) {
+    appendToken(chunk);
+  }
+  if (isLast) {
+    finishStreaming();
+    setBusy(false);
+  }
+});
+
+window.chatAPI.onError((msg) => {
+  finishStreaming();
+  setBusy(false);
+  // Show error as last assistant message
+  const bubble = document.createElement("div");
+  bubble.className = "msg assistant";
+  const roleLabel = document.createElement("div");
+  roleLabel.className = "msg-role";
+  roleLabel.textContent = "Hermes";
+  const bubbleInner = document.createElement("div");
+  bubbleInner.className = "msg-bubble";
+  bubbleInner.textContent = (t("error") + ": " + (msg || "Unknown error"));
+  bubbleInner.style.opacity = "0.7";
+  bubble.appendChild(roleLabel);
+  bubble.appendChild(bubbleInner);
+  historyEl.appendChild(bubble);
+  scrollToBottom();
+});
+
+window.chatAPI.onHistory((messages) => {
+  historyEl.innerHTML = "";
+  if (!messages || messages.length === 0) {
+    historyEl.appendChild(emptyState);
+    emptyState.style.display = "flex";
+    return;
+  }
+  messages.forEach((m) => {
+    if (m.role === "user" || m.role === "assistant") {
+      const msg = addMessage(m.role, m.content);
+    }
+  });
+});
+
+window.chatAPI.onBusy(({ busy: isBusy }) => {
+  setBusy(isBusy);
+});
+
+window.chatAPI.onDnd(({ active }) => {
+  dndIndicator.textContent = t("dndActive");
+  dndIndicator.classList.toggle("visible", active);
+  if (active) {
+    inputField.disabled = true;
+    btnSend.disabled = true;
+  }
+});
+
+window.chatAPI.onLangChange(({ lang }) => {
+  applyLang(lang);
+});
+
+// ── Show panel when DOM is ready ──
+reveal();
+</script>
+</body>
+</html>

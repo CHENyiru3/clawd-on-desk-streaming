@@ -52,6 +52,22 @@ const STRINGS = {
     triggerTripleClick: "Triple-click on idle pet (opens CLI)",
     triggerFocusFallback: "When pet click has no session to focus, open CLI instead",
     triggerTripleAndFocus: "Triple-click + focus-or-open fallback",
+    sectionHermesChat: "Hermes Chat",
+    hermesChatSubtitle:
+      "Configure how Clawd talks to Hermes via `hermes chat -q`. The command and args are passed directly; working directory is optional.",
+    rowHermesChatCommand: "Command",
+    rowHermesChatCommandDesc: "Hermes executable name or full path.",
+    rowHermesChatArgs: "Extra args",
+    rowHermesChatArgsDesc: "Additional arguments passed after -Q (one per line, parsed on save).",
+    rowHermesChatCwd: "Working directory",
+    rowHermesChatCwdDesc: "Optional. Leave blank to inherit Clawd's working directory.",
+    rowHermesChatTimeout: "Timeout (seconds)",
+    rowHermesChatTimeoutDesc: "Max wait time per message before giving up.",
+    actionTestHermesChat: "Test Connection",
+    actionClearHermesHistory: "Clear History",
+    toastHermesTestOk: "Hermes responded successfully.",
+    toastHermesTestFailed: "Hermes test failed: {msg}",
+    toastHermesHistoryCleared: "Chat history cleared.",
     eventSourceHook: "Hook",
     eventSourceLogPoll: "Log poll",
     eventSourcePlugin: "Plugin",
@@ -284,6 +300,22 @@ const STRINGS = {
     triggerTripleClick: "待机时三连击桌宠（打开 CLI）",
     triggerFocusFallback: "点击聚焦无会话时改为打开 CLI",
     triggerTripleAndFocus: "三连击 + 无会话时打开 CLI",
+    sectionHermesChat: "Hermes 对话",
+    hermesChatSubtitle:
+      "配置 Clawd 如何通过 `hermes chat -q` 与 Hermes 通信。命令和参数直接传递；工作目录可选。",
+    rowHermesChatCommand: "命令",
+    rowHermesChatCommandDesc: "Hermes 可执行文件名或完整路径。",
+    rowHermesChatArgs: "额外参数",
+    rowHermesChatArgsDesc: "-Q 之后附加的参数（每行一个，保存时解析）。",
+    rowHermesChatCwd: "工作目录",
+    rowHermesChatCwdDesc: "可选；留空继承 Clawd 的工作目录。",
+    rowHermesChatTimeout: "超时（秒）",
+    rowHermesChatTimeoutDesc: "每次消息最大等待时间，超时则放弃。",
+    actionTestHermesChat: "测试连接",
+    actionClearHermesHistory: "清除历史",
+    toastHermesTestOk: "Hermes 响应成功。",
+    toastHermesTestFailed: "Hermes 测试失败：{msg}",
+    toastHermesHistoryCleared: "对话历史已清除。",
     eventSourceHook: "Hook",
     eventSourceLogPoll: "日志轮询",
     eventSourcePlugin: "插件",
@@ -519,6 +551,30 @@ function readAgentLauncherPrefs() {
 function commitAgentLauncher(partial) {
   const next = { ...readAgentLauncherPrefs(), ...partial };
   return window.settingsAPI.update("agentLauncher", next);
+}
+
+const _HERMES_CHAT_DEFAULTS = {
+  command: "hermes",
+  args: [],
+  cwd: "",
+  timeoutMs: 180000,
+};
+function readHermesChatPrefs() {
+  const hc = snapshot && snapshot.hermesChat;
+  return hc && typeof hc === "object" ? { ..._HERMES_CHAT_DEFAULTS, ...hc } : { ..._HERMES_CHAT_DEFAULTS };
+}
+function commitHermesChat(partial) {
+  const next = { ...readHermesChatPrefs(), ...partial };
+  return window.settingsAPI.update("hermesChat", next);
+}
+function commitHermesChatText(field, raw) {
+  const cur = readHermesChatPrefs();
+  if (String(raw) === String(cur[field] || "")) return;
+  Promise.resolve(commitHermesChat({ [field]: raw })).then((result) => {
+    if (!result || result.status !== "ok") {
+      showToast(t("toastSaveFailed") + " " + ((result && result.message) || "unknown"), { error: true });
+    }
+  });
 }
 
 function t(key) {
@@ -1783,6 +1839,189 @@ function renderAgentsTab(parent) {
   }
 
   parent.appendChild(buildAgentLauncherSection());
+  parent.appendChild(buildHermesChatSection());
+}
+
+function buildHermesChatSection() {
+  const section = document.createElement("section");
+  section.className = "section";
+  const heading = document.createElement("h2");
+  heading.className = "section-title";
+  heading.textContent = t("sectionHermesChat");
+  section.appendChild(heading);
+  const sub = document.createElement("p");
+  sub.className = "subtitle";
+  sub.textContent = t("hermesChatSubtitle");
+  section.appendChild(sub);
+
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+
+  // Command row
+  wrap.appendChild(buildHermesTextRow({
+    field: "command",
+    labelKey: "rowHermesChatCommand",
+    descKey: "rowHermesChatCommandDesc",
+  }));
+
+  // Args row (stored as newline-separated string for display)
+  wrap.appendChild(buildHermesArgsRow());
+
+  // Cwd row
+  wrap.appendChild(buildHermesTextRow({
+    field: "cwd",
+    labelKey: "rowHermesChatCwd",
+    descKey: "rowHermesChatCwdDesc",
+  }));
+
+  // Timeout row (displayed in seconds)
+  wrap.appendChild(buildHermesTimeoutRow());
+
+  // Action buttons row
+  wrap.appendChild(buildHermesActionsRow());
+
+  section.appendChild(wrap);
+  return section;
+}
+
+function buildHermesTextRow({ field, labelKey, descKey }) {
+  const row = document.createElement("div");
+  row.className = "row";
+  const text = document.createElement("div");
+  text.className = "row-text";
+  const label = document.createElement("span");
+  label.className = "row-label";
+  label.textContent = t(labelKey);
+  text.appendChild(label);
+  const desc = document.createElement("span");
+  desc.className = "row-desc";
+  desc.textContent = t(descKey);
+  text.appendChild(desc);
+  row.appendChild(text);
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "soft-input";
+  input.value = String(readHermesChatPrefs()[field] || "");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.style.minWidth = "220px";
+  input.addEventListener("blur", () => commitHermesChatText(field, input.value));
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildHermesArgsRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  const text = document.createElement("div");
+  text.className = "row-text";
+  const label = document.createElement("span");
+  label.className = "row-label";
+  label.textContent = t("rowHermesChatArgs");
+  text.appendChild(label);
+  const desc = document.createElement("span");
+  desc.className = "row-desc";
+  desc.textContent = t("rowHermesChatArgsDesc");
+  text.appendChild(desc);
+  row.appendChild(text);
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "soft-input";
+  const args = Array.isArray(readHermesChatPrefs().args) ? readHermesChatPrefs().args : [];
+  input.value = args.join("\n");
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.style.minWidth = "220px";
+  input.addEventListener("blur", () => {
+    const lines = input.value.split("\n").map((l) => l.trim()).filter(Boolean);
+    commitHermesChatText("args", lines);
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildHermesTimeoutRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  const text = document.createElement("div");
+  text.className = "row-text";
+  const label = document.createElement("span");
+  label.className = "row-label";
+  label.textContent = t("rowHermesChatTimeout");
+  text.appendChild(label);
+  const desc = document.createElement("span");
+  desc.className = "row-desc";
+  desc.textContent = t("rowHermesChatTimeoutDesc");
+  text.appendChild(desc);
+  row.appendChild(text);
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const input = document.createElement("input");
+  input.type = "number";
+  input.className = "soft-input";
+  input.value = Math.round((readHermesChatPrefs().timeoutMs || 180000) / 1000);
+  input.min = 10;
+  input.max = 600;
+  input.style.width = "80px";
+  input.addEventListener("blur", () => {
+    const secs = parseInt(input.value, 10);
+    if (!isNaN(secs) && secs >= 10 && secs <= 600) {
+      commitHermesChatText("timeoutMs", secs * 1000);
+    } else {
+      input.value = Math.round(readHermesChatPrefs().timeoutMs / 1000);
+    }
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildHermesActionsRow() {
+  const row = document.createElement("div");
+  row.className = "row actions-row";
+  // Test button
+  const testBtn = document.createElement("button");
+  testBtn.className = "btn-secondary";
+  testBtn.textContent = t("actionTestHermesChat");
+  testBtn.addEventListener("click", async () => {
+    testBtn.disabled = true;
+    testBtn.textContent = t("checkingForUpdates") || "…";
+    try {
+      const result = await window.settingsAPI.command("testHermesChat", {});
+      if (result && result.status === "ok") {
+        showToast(t("toastHermesTestOk"), { error: false });
+      } else {
+        const msg = (result && result.message) || "unknown";
+        showToast(t("toastHermesTestFailed").replace("{msg}", msg), { error: true });
+      }
+    } catch (err) {
+      showToast(t("toastHermesTestFailed").replace("{msg}", err && err.message), { error: true });
+    } finally {
+      testBtn.disabled = false;
+      testBtn.textContent = t("actionTestHermesChat");
+    }
+  });
+  // Clear history button
+  const clearBtn = document.createElement("button");
+  clearBtn.className = "btn-secondary danger";
+  clearBtn.textContent = t("actionClearHermesHistory");
+  clearBtn.addEventListener("click", async () => {
+    const result = await window.settingsAPI.command("clearHermesHistory", {});
+    if (result && result.status === "ok") {
+      showToast(t("toastHermesHistoryCleared"), { error: false });
+    } else {
+      showToast(t("toastSaveFailed") + " " + ((result && result.message) || "unknown"), { error: true });
+    }
+  });
+  row.appendChild(testBtn);
+  row.appendChild(clearBtn);
+  return row;
 }
 
 function buildAgentLauncherSection() {

@@ -10,19 +10,22 @@ Clawd 桌宠 — 一个 Electron 桌面宠物，通过 hook 系统和日志轮�
 
 ```bash
 npm start              # 启动 Electron 应用（开发模式）
-npm run build          # electron-builder 打包 Windows NSIS 安装包
-npm run build:mac      # electron-builder 打包 macOS DMG（x64 + arm64）
+npm run build          # electron-builder 打包 macOS DMG（x64 + arm64，对应 package.json "build" 脚本）
+npm run build:mac      # 同上，macOS DMG
 npm run build:linux    # electron-builder 打包 Linux AppImage + deb
 npm run build:all      # 同时打包 Windows + macOS + Linux
 npm install            # 安装依赖（electron + electron-builder）
+npm test               # 运行单元测试（node --test test/*.test.js）
 npm run install:claude-hooks   # 手动注册 Claude Code hooks 到 ~/.claude/settings.json
 npm run uninstall:claude-hooks # 移除 Claude Code hooks
-npm run install:cursor-hooks   # 注册 Cursor Agent hooks 到 ~/.cursor/hooks.json
-npm run install:gemini-hooks   # 注册 Gemini CLI hooks 到 ~/.gemini/settings.json
-npm run install:kiro-hooks     # 注入 Clawd hooks 到 ~/.kiro/agents/*.json（含维护 clawd agent）
+npm run install:cursor-hooks    # 注册 Cursor Agent hooks 到 ~/.cursor/hooks.json
+npm run install:gemini-hooks    # 注册 Gemini CLI hooks 到 ~/.gemini/settings.json
+npm run install:kiro-hooks      # 注入 Clawd hooks 到 ~/.kiro/agents/*.json（含维护 clawd agent）
+npm run install:codebuddy-hooks # 注册 CodeBuddy hooks 到 ~/.codebuddy/settings.json
 npm run create-theme           # 脚手架生成新主题（用户 themes 目录下），见 docs/guide-theme-creation.md
-npm test               # 运行单元测试（node --test test/*.test.js）
 ```
+
+> **注意**：`npm run build` 对应 `package.json` 中的 `"build": "electron-builder --mac"` 脚本，构建 macOS DMG（而非 CLAUDE.md 早期版本的 Windows NSIS）。Windows NSIS 打包请用 electron-builder CLI 直接调用或配置对应的 npm script。
 
 手动测试状态切换：
 ```bash
@@ -41,7 +44,11 @@ bash test-macos.sh     # macOS 适配测试（需先 npm start）
 bash test-oneshot-gate.sh [state] [秒] # 测 Animation Map 的 5 个 ONESHOT disable 开关（error/notification/sweeping/attention/carrying），省略 state 则全测
 ```
 
-单元测试覆盖 agents/、hook 注册和端口发现逻辑（`test/registry.test.js`、`test/codex-log-monitor.test.js`、`test/gemini-log-monitor.test.js`、`test/gemini-install.test.js`、`test/install.test.js`、`test/server-config.test.js`、`test/menu-autostart.test.js`），使用 Node.js 内置 test runner。Electron 主进程（状态机、窗口、托盘）无自动化测试，依赖手动 + shell 脚本验证。
+单元测试覆盖 agents/、hook 注册和端口发现逻辑、以及新增的各个子系统模块。使用 Node.js 内置 test runner（`node --test`），运行 `npm test` 执行全套，或 `node --test test/theme-loader.test.js` 单文件运行。
+
+覆盖范围（test/*.test.js）：registry、codex-log-monitor、gemini-log-monitor、gemini-install、install、server-config、menu-autostart、agent-gate、agent-launcher、agents、animation-cycle、clipboard-history、clipboard-sanitizer、codebuddy-install、codex-notify-subgate、create-theme、cursor-install、elicitation、focus、global-rules、hermes-checkin、hermes-checkin-cleaner、hit-geometry、i18n、json-utils、kiro-install、log-rotate、opencode-install、permission-reposition、prefs、provider-usage-fetchers、provider-usage-layout、provider-usage-runtime、provider-usage-summary-fallback、server-hook-management、server-permission-subgate、settings-actions、settings-controller、settings-store、shared-process、size-utils、startup-window-state、state-display-svg、terminal-diagnostics、theme-loader、theme-override、tick、time-checkin、time-checkin-bubble、translate、translate-bubble-timer、update-bubble-position、update-bubble-style、updater、work-area、remote-deploy、clipboard-context-summary。
+
+Electron 主进程（状态机、窗口、托盘）无自动化测试，依赖手动 + shell 脚本验证。
 
 ## 架构与数据流
 
@@ -128,7 +135,19 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 
 ### 多 Agent 架构（agents/）
 
-每个 agent 定义为一个配置模块，导出事件映射、进程名、能力声明（`capabilities` 含 `httpHook` / `permissionApproval` / `sessionEnd` / `subagent`）：
+每个 agent 定义为一个配置模块，导出事件映射、进程名、能力声明（`capabilities` 含 `httpHook / permissionApproval / sessionEnd / subagent / interactiveBubble`）：
+
+| Agent | httpHook | permissionApproval | sessionEnd | subagent | interactiveBubble |
+|-------|----------|-------------------|-----------|----------|-------------------|
+| Claude Code | ✓ | ✓ | ✓ | ✓ | — |
+| Codex CLI | — | — | ✓ | ✓ | ✓（Dismiss only） |
+| Copilot CLI | — | — | ✓ | ✓ | — |
+| Cursor Agent | — | — | ✓ | ✓ | — |
+| Gemini CLI | — | — | ✓ | — | — |
+| Kiro CLI | — | — | — | — | — |
+| CodeBuddy | ✓ | ✓ | ✓ | — | — |
+| opencode | ✓（plugin） | ✓ | ✓ | ✓ | — |
+
 - `agents/claude-code.js` — Claude Code 事件映射 + 能力（hooks、permission、terminal focus）
 - `agents/codex.js` — Codex CLI JSONL 事件映射 + 轮询配置
 - `agents/copilot-cli.js` — Copilot CLI camelCase 事件映射
@@ -176,6 +195,29 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 | `src/login-item.js` | 开机自启：封装 `app.getLoginItemSettings` / `setLoginItemSettings`，供 controller 做 validate/effect |
 | `src/work-area.js` + `size-utils.js` | 多显示器工作区查询 / 窗口尺寸钳制工具 |
 | `src/log-rotate.js` | 1MB 循环追加日志工具：超限时从文件中点的换行处切半保留新内容 |
+| `src/agent-launcher.js` | 三击/聚焦触发 agent CLI 启动：命令校验（256char、禁止字符）、cwd 解析（`..` 穿越保护）、macOS 自动前台授权 |
+| `src/global-rules.js` | 全局规则引擎：整合 clipboard / notification / media / browser 事件到状态机，含 autoReturn 定时器；`RULE_STATE_MAP`（carrying/listening/reading/notification）、`RULE_PRIORITY` |
+| `src/clipboard-history.js` | 剪切板历史：in-memory ring buffer + maxAgeMs 过期修剪；依赖 `clipboard-sanitizer` 做隐私过滤 |
+| `src/clipboard-sanitizer.js` | 隐私过滤：`SECRET_LABEL_PATTERNS`（password/token/account）+ `DIRECT_PATTERNS`（email/phone/JWT/github_pat/minimax key 等）；返回 `{ text, redacted, redactionCount }` |
+| `src/clipboard-context-summary.js` | LLM 总结剪切板上下文（依赖 Hermes/MiniMax API），用于 `carrying` 状态气泡 |
+| `src/hermes-checkin.js` | 时间打卡气泡：按工作时间槽（morning/midday/afternoon/evening/late-night）触发打卡提示；调用 Hermes LLM 生成打卡文案 |
+| `src/hermes-command.js` | Hermes LLM 调用封装：MiniMax API proxy（`MINIMAX_BASE_URL` = `https://api.minimaxi.com/anthropic`），`buildPromptInvocation` 组装 prompt |
+| `src/hermes-checkin-cleaner.js` | 清洗 Hermes 输出：移除 markdown code block、反引号、多余空行 |
+| `src/translate.js` | 翻译气泡：调用 MiniMax API（`MINIMAX_API_KEY` env var）翻译文本；支持中↔英双语气泡显示 |
+| `src/translate-bubble-timer.js` | 翻译气泡生命周期管理：自动消失计时器 |
+| `src/provider-usage-fetchers.js` | provider usage 数据获取入口：并行调用 Python checker 脚本（codex + minimax），`normalizeUsageSnapshot` 标准化输出，`buildProviderError` 构造错误兜底 |
+| `src/provider-usage-model.js` | 数据模型：`normalizeUsageSnapshot` / `createEmptyProviderGroup` / `providerGroupHasUsableData` / `markProviderGroupStale`；`PROVIDER_WINDOW_MAP` 定义各 provider 的 usage window 映射 |
+| `src/provider-usage-runtime.js` | usage 检查定时器：aligned to 5-min 边界（05/15/25/35/45/55），`shouldDefer` hook 防止与 mini 模式冲突；`onUsageUpdate` 回调推送气泡 UI |
+| `src/provider-usage-layout.js` | usage 气泡布局：按 provider 分栏渲染，`<=50%` warning / `<20%` critical 颜色；支持 `detailText` / `resetText` 自定义行 |
+| `src/provider-usage-summary-fallback.js` | 无 LLM 兜底汇总：`buildFallbackSummary()` 用纯阈值逻辑（剩余 <20%=critical，<50%=warning）生成 summaryText |
+| `src/macos-browser-activity.js` | macOS 浏览器识别：`BROWSER_BUNDLE_IDS`（Safari/Chrome/Brave/Edge/Firefox） |
+| `src/macos-clipboard-monitor.js` | macOS 剪切板轮询：定时读取 NSPasteboard，过滤静默重复内容 |
+| `src/macos-frontmost-app-monitor.js` | macOS 前台 app 监控：检测 agent 编辑器（Claude Code / Cursor / VS Code）是否在运行 |
+| `src/macos-input-monitor.js` | macOS 输入监控：键盘活跃度检测（idle/active） |
+| `src/macos-media-monitor.js` | macOS 媒体播放监控：检测音频/视频 app 活跃状态 |
+| `src/macos-notification-monitor.js` | macOS 通知监控：接收 `notificationPosted` 事件，过滤 agent 相关通知 |
+| `src/startup-window-state.js` | 启动时窗口位置/尺寸恢复：从 prefs 读取 + clampToScreen |
+| `src/terminal-diagnostics.js` | 终端诊断：汇总 agent 运行状态、hook 注册情况、provider usage 摘要 |
 | `hooks/clawd-hook.js` | Claude Code command hook：事件名 → 状态映射 → HTTP POST，零依赖 |
 | `hooks/copilot-hook.js` | Copilot CLI command hook：camelCase 事件名，与 clawd-hook.js 相同架构 |
 | `hooks/gemini-hook.js` + `gemini-install.js` | Gemini CLI hook + 安全注册到 ~/.gemini/settings.json，导出 `registerGeminiHooks()` |
@@ -192,6 +234,40 @@ opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
 | `scripts/create-theme.js` / `validate-theme.js` | 主题脚手架 CLI + 校验器（`npm run create-theme`） |
 | `launch.js` | 启动器：清除 `ELECTRON_RUN_AS_NODE` 环境变量后 spawn Electron |
 | `extensions/vscode/` | VS Code 扩展（clawd-terminal-focus）：通过 `onUri` 协议聚焦正确的终端 tab |
+| `tools/png2svg.py` | PNG 转 SVG 工具（Python Pillow）|
+| `tools/calico-test.html` | 主题预览用 HTML（standalone，无 Electron 依赖）|
+
+### IPC 通道（main ↔ renderer）
+
+**Renderer → Main**（`ipcRenderer.send`）：
+- `show-context-menu` — 右键菜单
+- `move-window-by(dx, dy)` — 相对移动窗口
+- `drag-end` — 拖拽结束
+- `play-click-reaction(svg, duration)` — 点击反应动画
+- `pause-cursor-polling` / `resume-from-reaction` — 暂停/恢复眼球追踪
+- `focus-terminal` / `open-agent-cli` / `exit-mini-mode` / `show-session-menu` — 菜单操作
+- `start-drag-reaction` / `end-drag-reaction` — 拖拽反应
+- `proportional-custom(value)` — elicitation 输入提交（prompt 子窗口）
+
+**Main → Renderer**（`webContents.send`）：
+- `state-change` — 状态切换（`{ state, svg }`）
+- `eye-move({ dx, dy })` — 眼球偏移
+- `reaction(svg, duration)` — 反应动画播放
+- `theme-config` — 主题配置同步到 hitWin
+- `permission-show` — 权限气泡数据
+- `bubble-height` — 气泡高度上报（用于堆叠计算）
+- `hit-state-sync` / `hit-cancel-reaction` — hitWin → renderWin relay
+- `update-bubble-show/hide` — 更新气泡
+- `translate-show` — 翻译气泡
+- `time-checkin-bubble-show/hide` — 打卡气泡
+- `settings-changed` — 设置变更广播（settings store subscriber 触发）
+
+**Settings 窗口**（`ipcRenderer.invoke` → `ipcMain.handle`）：
+- `settings:get-snapshot` / `settings:update(key, value)` / `settings:command(action, payload)`
+- `settings:get-animation-overrides-data` / `settings:preview-animation-override`
+- `settings:list-themes` / `settings:confirm-remove-theme`
+- `settings:list-agents` / `settings:confirm-disable-claude-hooks` / `settings:confirm-disconnect-claude-hooks`
+- `settings:open-theme-assets-dir` / `settings:open-mac-typing-privacy`
 
 ### 状态机关键机制（state.js）
 
@@ -235,6 +311,8 @@ Clawd 是一个**主题化**的桌宠——所有动画资源、计时、hitbox�
 - `hydrate()` 是唯一跳过 `effect` 的入口，用于启动时从 `app.getLoginItemSettings()` 等系统 API 导入状态而不触发回写。
 - 设置写入 → controller `_commit` → store 广播 → subscribe 订阅者（menu.js / main.js / tray）响应副作用。没有其它路径能修改 prefs。
 
+**`prefs.agents` 结构**：每个 agent 的运行时开关，格式为 `{ enabled, permissionsEnabled, ... }`（具体字段见 `src/agent-gate.js` 和 `src/prefs.js` 的 SCHEMA）。`agent-gate.js` 的 `isAgentEnabled(snapshot, id)` / `isAgentPermissionsEnabled(...)` 读取这些字段，默认 true 以兼容旧版 prefs（缺字段时也按 true 处理）。
+
 ### Permission Bubble 系统（permission.js + server.js → bubble.html 渲染）
 
 - **HTTP hook**：PermissionRequest 事件使用 `type: "http"` hook（阻塞，600s 超时），而非 command hook
@@ -248,6 +326,39 @@ Clawd 是一个**主题化**的桌宠——所有动画资源、计时、hitbox�
 - **DND 模式**：休眠时自动 deny 所有权限请求，不弹气泡
 - **suggestion 格式**：支持 `addRules`（权限规则）和 `setMode`（切换模式）两种类型
 - **Codex 通知气泡**：Codex CLI 无法使用阻塞式 HTTP hook，通过 JSONL 日志检测 `exec_approval_request` / `apply_patch_approval_request` 触发通知气泡，仅提供 Dismiss 按钮（无 Allow/Deny），30 秒自动过期
+
+### Global Rules 引擎 + macOS 感知
+
+`src/global-rules.js` 整合来自 macOS monitor 子系统的各类事件，统一注入状态机：
+
+- **事件类型 → 状态映射**（`RULE_STATE_MAP`）：
+  - `clipboardReaction` → `carrying`（剪切板内容检测）
+  - `notificationReaction` → `notification`（系统通知过滤）
+  - `mediaPlaybackReaction` → `listening`（音频/视频播放）
+  - `browserReadingReaction` → `reading`（浏览器阅读）
+- **优先级**（`RULE_PRIORITY`）：notificationReaction(5) > clipboardReaction(4) > mediaPlaybackReaction(2) > browserReadingReaction(1)
+- **autoReturn 定时器**：通过 `setTimeoutFn` 注入，支持瞬时状态超时回退
+- **`isBrowserApp()`**：跨模块共享，来自 `macos-browser-activity.js`（`BROWSER_BUNDLE_IDS`：Safari/Chrome/Brave/Edge/Firefox）
+
+**macOS 监控子系统**（`src/macos-*.js`，macOS only）：
+- `macos-browser-activity.js` — bundle ID 白名单
+- `macos-clipboard-monitor.js` — NSPasteboard 轮询，过滤静默重复
+- `macos-frontmost-app-monitor.js` — 检测 Claude Code / Cursor / VS Code 前台活跃
+- `macos-input-monitor.js` — 键盘活跃度（idle/active）
+- `macos-media-monitor.js` — 音频/视频 app 检测
+- `macos-notification-monitor.js` — `notificationPosted` 事件，过滤 agent 相关
+
+### Agent Launcher（Triple-Click / Focus-Fallback）
+
+`src/agent-launcher.js` 支持通过三击或聚焦回退触发 agent CLI：
+
+- **触发模式**（`AGENT_LAUNCHER_TRIGGER_LIST`）：
+  - `tripleClick` — 三击 hitWin 检测
+  - `focusFallback` — 输入窗口失焦时的兜底
+  - `tripleAndFocus` — 同时启用两者
+- **命令校验**（`validateLauncherCommand`）：最大 256 字符、禁止 `|&`$\`<>` 等shell 元字符
+- **cwd 解析**（`resolveLauncherCwd`）：`..` 路径穿越保护；目录不存在则 fallback 到 `$HOME`
+- **macOS 前台授权**：触发 `focusFallback` 时自动调用 `AllowSetForegroundWindow`
 
 ### opencode Plugin 架构（hooks/opencode-plugin/index.mjs）
 
@@ -375,6 +486,49 @@ opencode 是唯一**以 plugin 形式集成**的 agent，其他 agent 都是 hoo
 - main.js 启动时自动调用 `registerHooks({ silent: true })` 注册缺失的 hooks
 - PermissionRequest 必须用 HTTP hook（阻塞式），其他事件用 command hook（非阻塞式）
 - 极简模式动画期间（`miniTransitioning`），所有窗口定位路径（`always-on-top-changed`、`display-metrics-changed`、`display-removed` 等）都必须检查此标志，否则并发定位会导致 `setPosition()` 崩溃
+
+### Provider Usage 检查（无 LLM）
+
+provider usage 通过 Python 脚本并行拉取 Codex + MiniMax 数据，无需 LLM 调用。架构分 5 层：
+
+| 层 | 文件 | 职责 |
+|---|---|---|
+| 入口 | `provider-usage-runtime.js` | 定时调度：对齐到 5-min 边界（:05/:15/:25/:35/:45/:55），`shouldDefer` 在 mini 模式下推迟，`onUsageUpdate` 推送气泡 UI |
+| 数据获取 | `provider-usage-fetchers.js` | `fetchProviderUsageSnapshots()` 并行调用 Python checker，`runChecker()` 执行 `python3 script.py --provider codex/minimax --json` |
+| 数据模型 | `provider-usage-model.js` | `normalizeUsageSnapshot` / `createEmptyProviderGroup` / `providerGroupHasUsableData`；`PROVIDER_WINDOW_MAP` 定义 fiveHour/weekly 窗口 |
+| 布局渲染 | `provider-usage-layout.js` | `<=50%` warning（橙）/ `<20%` critical（红）；支持 detailText / resetText 自定义行 |
+| LLM 兜底 | `provider-usage-summary-fallback.js` | `buildFallbackSummary()` 纯阈值逻辑（`<20%`=critical，`<50%`=warning），无需 LLM |
+
+**使用方法**：
+
+```bash
+cd ~/Desktop/Github/ai_skills/ai-ml-skills/utility/provider-usage-checker
+
+# 检查 Codex（OAuth token 认证，从 ~/.codex/auth.json 读取）
+python3 scripts/check_usage.py --provider codex --json --debug
+
+# 检查 MiniMax（Playwright 无头浏览器，需先确保凭证已写入 providers/minimax.py）
+python3 scripts/check_usage.py --provider minimax --json --debug
+```
+
+**配置**：`clawd-prefs.json` 中 `providerUsageChecker.scriptPath` 指定 Python 脚本路径。超参：`timeoutMs`（默认 30000ms）、`python`（默认 `python3`）。
+
+**MiniMax 凭证**：硬编码在 `providers/minimax.py` 顶部 `MINIMAX_EMAIL` / `MINIMAX_PASSWORD`。首次运行需检查页面结构是否变更（若有元素找不到，用 `--debug` 排查）。
+
+**Hermes LLM**：已从 provider usage 管线移除；`hermes-checkin.js`（打卡气泡）和 `hermes-command.js`（Hermes 调用工具）保留，用于独立的时间打卡功能。
+
+### Hermes 时间打卡系统
+
+`src/hermes-checkin.js` 驱动时间打卡气泡，按工作时间槽触发：
+
+- **槽位定义**（`buildTimeContext`）：morning(5-10h)、midday(11-13h)、afternoon(14-16h)、evening(17-22h)、late-night（其余）
+- **prompt 构建**（`buildPromptInvocation`）：注入当前时间槽 + `clipboardContextSummary`，调用 MiniMax LLM 生成个性化打卡文案
+- **输出清洗**（`hermes-checkin-cleaner.js`）：去除 markdown code block、反引号、多余空行
+- **气泡显示**：`time-checkin-bubble.html` 渲染，`time-checkin-bubble.js` 管理生命周期
+
+### 翻译气泡系统
+
+`src/translate.js` 使用 MiniMax API（`MINIMAX_API_KEY` env var，`baseURL` = `https://api.minimaxi.com/anthropic`）翻译文本，支持中↔英双语气泡（`translate-bubble.html`）。`translate-bubble-timer.js` 管理气泡自动消失计时器。
 
 ## 已知限制
 

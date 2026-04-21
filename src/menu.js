@@ -499,6 +499,11 @@ module.exports = function initMenu(ctx) {
         label: t("diagnostics"),
         submenu: buildDiagnosticsSubmenu(),
       },
+      { type: "separator" },
+      {
+        label: t("chatWithHermes"),
+        click: () => ctx.openChatPanel && ctx.openChatPanel(),
+      },
     ];
     // macOS: Dock and Menu Bar visibility toggles
     if (isMac) {
