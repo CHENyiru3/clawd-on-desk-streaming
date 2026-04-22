@@ -123,6 +123,11 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.agentLauncher.cwd, "");
     assert.strictEqual(d.agentLauncher.trigger, "focusFallback");
   });
+
+  it("seeds Hermes chat with a five minute timeout", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(d.hermesChat.timeoutMs, 300000);
+  });
 });
 
 describe("prefs.validate", () => {

@@ -108,11 +108,13 @@ body { padding: 0; }
   background: var(--titlebar-bg);
   border-bottom: 1px solid var(--card-border);
   flex-shrink: 0;
+  -webkit-app-region: drag;
 }
 .titlebar-brand {
   display: flex;
   align-items: center;
   min-width: 0;
+  -webkit-app-region: drag;
 }
 .titlebar-title {
   font-size: 12px;
@@ -123,6 +125,7 @@ body { padding: 0; }
 .titlebar-actions {
   display: flex;
   gap: 4px;
+  -webkit-app-region: no-drag;
 }
 .titlebar-btn {
   width: 22px;
@@ -190,6 +193,7 @@ body { padding: 0; }
   display: flex;
   flex-direction: column;
   gap: 8px;
+  -webkit-app-region: no-drag;
 }
 .history::-webkit-scrollbar { width: 5px; }
 .history::-webkit-scrollbar-track { background: transparent; }
@@ -286,6 +290,64 @@ body { padding: 0; }
   40% { transform: scale(1); opacity: 1; }
 }
 
+/* ── Permission card ── */
+.permission-card {
+  display: none;
+  margin: 8px 10px 0;
+  padding: 9px;
+  border: 1px solid rgba(217, 119, 87, 0.28);
+  border-radius: 10px;
+  background: rgba(217, 119, 87, 0.08);
+  flex-shrink: 0;
+  -webkit-app-region: no-drag;
+}
+.permission-card.visible { display: block; }
+.permission-title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--titlebar-color);
+  margin-bottom: 5px;
+}
+.permission-command {
+  max-height: 48px;
+  overflow: auto;
+  padding: 6px 7px;
+  border-radius: 7px;
+  background: var(--input-bg);
+  color: var(--input-color);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.permission-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 7px;
+}
+.permission-btn {
+  border: 1px solid var(--input-border);
+  border-radius: 7px;
+  background: var(--card-bg);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  padding: 5px 7px;
+}
+.permission-btn:hover:not(:disabled) {
+  border-color: var(--input-focus-border);
+  color: var(--text-primary);
+}
+.permission-btn.deny:hover:not(:disabled) {
+  border-color: #ef4444;
+  color: #ef4444;
+}
+.permission-btn:disabled { opacity: 0.45; cursor: wait; }
+
 /* ── Empty state ── */
 .empty-state {
   flex: 1;
@@ -320,6 +382,7 @@ body { padding: 0; }
   padding: 8px 10px;
   border-top: 1px solid var(--card-border);
   flex-shrink: 0;
+  -webkit-app-region: no-drag;
 }
 .input-field {
   flex: 1;
@@ -374,8 +437,8 @@ body { padding: 0; }
       <span class="hermes-status-dot" id="hermesStatusDot" title="Status" data-status="offline"></span>
     </div>
     <div class="titlebar-actions">
-      <button class="titlebar-btn clear-btn" id="btnClear" title="Clear">✕</button>
-      <button class="titlebar-btn" id="btnClose" title="Close">×</button>
+      <button class="titlebar-btn clear-btn" id="btnClear" title="Clear history">🗑</button>
+      <button class="titlebar-btn" id="btnClose" title="Close">✕</button>
     </div>
   </div>
 
@@ -399,6 +462,12 @@ body { padding: 0; }
       <div class="thinking-dot"></div>
     </div>
     <span class="thinking-label" id="thinkingLabel"></span>
+  </div>
+
+  <div class="permission-card" id="permissionCard">
+    <div class="permission-title" id="permissionTitle"></div>
+    <div class="permission-command" id="permissionCommand"></div>
+    <div class="permission-actions" id="permissionActions"></div>
   </div>
 
   <!-- Input row -->
@@ -430,11 +499,16 @@ const btnClose = document.getElementById("btnClose");
 const dndIndicator = document.getElementById("dndIndicator");
 const titleText = document.getElementById("titleText");
 const hermesStatusDot = document.getElementById("hermesStatusDot");
+const permissionCard = document.getElementById("permissionCard");
+const permissionTitle = document.getElementById("permissionTitle");
+const permissionCommand = document.getElementById("permissionCommand");
+const permissionActions = document.getElementById("permissionActions");
 
 let currentLang = "en";
 let busy = false;
 let dndActive = false;
 let hermesStatus = "offline";
+let activePermission = null;
 
 // ── i18n strings ──
 const STRINGS = {
@@ -449,6 +523,14 @@ const STRINGS = {
     hermesOffline: "Hermes is offline — configure the chat command in Settings",
     hermesError: "Hermes is recovering from an error",
     error: "Error",
+    clearHistory: "Clear history",
+    dropHint: "Drop files or folders to insert paths",
+    waitingPermission: "Waiting for permission…",
+    permissionTitle: "Hermes needs permission",
+    allowOnce: "Allow Once",
+    allowSession: "Allow Session",
+    allowAlways: "Allow Always",
+    deny: "Deny",
   },
   zh: {
     title: "Hermes",
@@ -461,6 +543,14 @@ const STRINGS = {
     hermesOffline: "Hermes 离线 — 请先在设置中配置对话命令",
     hermesError: "Hermes 出错，正在恢复",
     error: "错误",
+    clearHistory: "清除历史",
+    dropHint: "拖放文件或文件夹以插入路径",
+    waitingPermission: "等待权限确认…",
+    permissionTitle: "Hermes 需要权限",
+    allowOnce: "暂时允许",
+    allowSession: "本次会话允许",
+    allowAlways: "始终允许",
+    deny: "拒绝",
   },
 };
 
@@ -477,6 +567,7 @@ function applyLang(lang) {
   thinkingLabel.textContent = t("thinking");
   if (!busy) thinkingRow.classList.remove("visible");
   updateInputState();
+  if (activePermission) renderPermissionCard(activePermission);
 }
 
 applyLang("en");
@@ -589,7 +680,7 @@ function setBusy(state) {
   updateInputState();
   thinkingRow.classList.toggle("visible", state);
   if (state) {
-    thinkingLabel.textContent = t("sending");
+    thinkingLabel.textContent = activePermission ? t("waitingPermission") : t("sending");
   } else {
     thinkingLabel.textContent = t("thinking");
   }
@@ -629,6 +720,95 @@ function submitInput() {
   window.chatAPI.send(text);
 }
 
+function renderPermissionCard(data) {
+  activePermission = data;
+  permissionTitle.textContent = t("permissionTitle");
+  const input = data && data.toolInput && typeof data.toolInput === "object" ? data.toolInput : {};
+  const command = typeof input.command === "string" && input.command ? input.command : "(unknown command)";
+  const desc = typeof input.description === "string" && input.description ? input.description + "\n" + command : command;
+  permissionCommand.textContent = desc;
+  permissionActions.innerHTML = "";
+
+  const choices = [
+    { key: "allowOnce", behavior: "hermes-once" },
+    { key: "allowSession", behavior: "hermes-session" },
+  ];
+  if (data && data.hermesAllowPermanent) {
+    choices.push({ key: "allowAlways", behavior: "hermes-always" });
+  }
+  choices.push({ key: "deny", behavior: "hermes-deny", className: "deny" });
+
+  choices.forEach((choice) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = choice.className ? `permission-btn ${choice.className}` : "permission-btn";
+    btn.textContent = t(choice.key);
+    btn.addEventListener("click", () => {
+      for (const b of permissionActions.querySelectorAll("button")) b.disabled = true;
+      window.chatAPI.decidePermission({ id: data.id, behavior: choice.behavior });
+    });
+    permissionActions.appendChild(btn);
+  });
+  permissionCard.classList.add("visible");
+  setBusy(busy);
+}
+
+function clearPermissionCard(id) {
+  if (id && activePermission && activePermission.id !== id) return;
+  activePermission = null;
+  permissionCard.classList.remove("visible");
+  permissionActions.innerHTML = "";
+  permissionCommand.textContent = "";
+  setBusy(busy);
+}
+
+// ── Path formatting for drag-and-drop (uses a preload-safe helper) ──
+const HANDOVER_DIR = "/Users/eric_yiru/Desktop/Clawdie_handover";
+
+function formatDroppedPaths(files) {
+  const paths = [];
+  if (!files) return paths;
+  const len = files.length;
+  for (let i = 0; i < len; i++) {
+    const filePath = window.chatAPI.getPathForFile(files[i]);
+    if (filePath && typeof filePath === "string" && filePath.trim()) {
+      paths.push(filePath.trim());
+    }
+  }
+  return paths;
+}
+
+function buildDropContext(paths) {
+  if (!paths || paths.length === 0) return "";
+  const contextLines = paths.map((p) => `@"${p}"`).join("\n");
+  const extra = paths.length > 1 ? `\n\nNote: Put processed outputs in ${HANDOVER_DIR}.` : "";
+  return contextLines + extra;
+}
+
+function insertDroppedContext(files) {
+  const paths = formatDroppedPaths(files);
+  if (paths.length === 0) {
+    // Show a brief non-blocking hint in the input area
+    inputField.placeholder = t("dropHint");
+    setTimeout(() => { inputField.placeholder = ""; }, 3000);
+    return;
+  }
+
+  const insert = buildDropContext(paths);
+
+  const current = inputField.value;
+  if (current && current.trim()) {
+    inputField.value = current + "\n\n" + insert;
+  } else {
+    inputField.value = insert;
+  }
+
+  inputField.focus();
+  requestAnimationFrame(() => {
+    inputField.scrollTop = inputField.scrollHeight;
+  });
+}
+
 // ── Event listeners ──
 inputField.addEventListener("keydown", (e) => {
   if (e.key === "Enter" && !e.shiftKey) {
@@ -655,6 +835,76 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") {
     window.chatAPI.close();
   }
+});
+
+// ── File/folder drag-and-drop ──
+let dragOverCount = 0;
+let dropOverlayEl = null;
+
+function ensureDropOverlay() {
+  if (dropOverlayEl) return dropOverlayEl;
+  dropOverlayEl = document.createElement("div");
+  dropOverlayEl.className = "drop-overlay";
+  Object.assign(dropOverlayEl.style, {
+    position: "absolute",
+    inset: "0",
+    background: "rgba(217, 119, 87, 0.12)",
+    border: "2px dashed var(--thinking-dot)",
+    borderRadius: "14px",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    pointerEvents: "none",
+    zIndex: "10",
+    fontSize: "13px",
+    fontWeight: "600",
+    color: "var(--text-secondary)",
+  });
+  dropOverlayEl.textContent = t("dropHint");
+  return dropOverlayEl;
+}
+
+function showDropOverlay() {
+  const overlay = ensureDropOverlay();
+  panel.style.position = "relative";
+  overlay.style.display = "flex";
+  panel.appendChild(overlay);
+}
+
+function hideDropOverlay() {
+  if (dropOverlayEl) {
+    dropOverlayEl.style.display = "none";
+  }
+}
+
+document.addEventListener("dragenter", (e) => {
+  if (e.dataTransfer && e.dataTransfer.types.includes("Files")) {
+    dragOverCount++;
+    showDropOverlay();
+  }
+});
+
+document.addEventListener("dragleave", (e) => {
+  dragOverCount--;
+  if (dragOverCount <= 0) {
+    dragOverCount = 0;
+    hideDropOverlay();
+  }
+});
+
+document.addEventListener("dragover", (e) => {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "copy";
+});
+
+document.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragOverCount = 0;
+  hideDropOverlay();
+
+  const files = e.dataTransfer && e.dataTransfer.files;
+  if (!files || files.length === 0) return;
+  insertDroppedContext(files);
 });
 
 // ── IPC listeners ──
@@ -723,6 +973,14 @@ window.chatAPI.onStatus((status) => {
 
 window.chatAPI.onLangChange((lang) => {
   applyLang(lang);
+});
+
+window.chatAPI.onPermissionRequest((data) => {
+  renderPermissionCard(data);
+});
+
+window.chatAPI.onPermissionResolved((data) => {
+  clearPermissionCard(data && data.id);
 });
 
 // ── Show panel when DOM is ready ──

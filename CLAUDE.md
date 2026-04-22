@@ -47,15 +47,21 @@ Supported or partially supported surfaces found in the codebase include:
 - Settings persistence, tray/menu actions, i18n, startup window state, and login item helpers.
 - macOS activity collectors for typing, frontmost app, clipboard, media, and related global activity rules.
 - Clipboard history/sanitization, translation bubbles, time check-ins, provider usage summaries, update bubbles, and Hermes chat/check-in helpers.
+    - MiniMax usage extraction surfaces the 5-hour primary window (scraped from the quota N/M count, not the CSS-rendered percentage) — fixing a longstanding wrong-percentage display caused by regex mis-matching copyright year numbers.
+- Translation bubble positioning: the translate bubble is always pet-attached — it uses hitbox-center alignment (independent of the global `bubbleFollowPet` setting) with a three-tier placement model (above-pet → below-pet → side). It uses `showInactive()` instead of `show()` to avoid focus stealing, calls `guardAlwaysOnTop` on creation and after height changes, and re-applies macOS floating visibility after showing. Bounds are computed by the pure helper `src/translate-bubble-position.js` and repositioned whenever the pet moves, the bubble reports measured height, or display metrics change.
+- Settings window AI Work tab: AI-related controls are consolidated into a single "AI Work" tab replacing the old "Agents" tab. The tab contains Hermes status and chat config (with Advanced section for extra args textarea), Agents & Permissions, Translation & MiniMax (with visible hotkey text "Ctrl+Shift+T"), Provider Usage (with Advanced section exposing Python executable, checker script path, browser selection, and timeout ms), Time Check-ins, and a collapsed Diagnostics area. The General tab retains Appearance, Startup, Bubbles, and Global Activity. Disabled Shortcuts and About placeholder tabs are removed. The `hermesChat` field is now validated in `updateRegistry` (command non-empty string, args string array, cwd string, timeoutMs bounded 10000–600000). Time check-in timeout validation max is corrected to 120000ms. Hermes settings buttons use `soft-btn` styling and the loading text uses a proper i18n key.
 - A pet-adjacent Hermes chat surface that opens on the left side of the pet, plus a right-side provider/status HUD.
-- Unit tests under `test/` for many non-Electron and extracted logic modules.
+- Hermes chat panel improvements: draggable titlebar (CSS `-webkit-app-region`), session-persistent manual drag position, file/folder drag-and-drop with `@"path"` context insertion and multi-item handover guidance, and visually distinct Clear/Close titlebar buttons.
+- Hermes permission bridge: dangerous commands in `hermes chat` sessions are routed through Clawd's permission bubble UI via a Python stdlib bridge (injected via `PYTHONPATH`), filesystem poll-file reverse channel, and the existing `POST /permission` Hermes branch — no modification to the installed Hermes package.
+- Unit tests under `test/` for many non-Electron and extracted logic modules, including `chat-drop-paths.js` and `chat-panel-layout.js`.
 
 Next-stage status:
 
 - Achieved: Clawd already has the core frontend foundation: theme-driven pet rendering, hit-window input handling, deterministic state mapping, click/drag reactions, mini mode, permission/status bubbles, a right-side provider usage HUD, and initial Hermes chat/check-in helpers.
 - Achieved: The Hermes chat surface is oriented as a left-side pet companion board, and Hermes availability/activity can be reflected in the desktop UI without asking Hermes to choose animations.
-- Partially achieved: Hermes exists as a backend path, but it is still not the central durable task backbone.
-- Left to build: Hermes API Server/Gateway integration, richer lifecycle-to-state mapping, and longer-running Hermes task workflows.
+- Achieved: Hermes permission bridge routes dangerous-command approval through Clawd's permission bubble UI. The Python stdlib bridge (`hooks/hermes-permission-bridge.py`) is injected via `PYTHONPATH` into the spawned Hermes child process; a tempfile-based poll channel (`POST /permission` → bubble → poll file) provides the reverse channel without modifying the Hermes package.
+- Partially achieved: Hermes exists as a backend path, but it is not yet the central durable task backbone for longer-running workflows.
+- Left to build: Hermes API Server/Gateway integration and richer lifecycle-to-state mapping for task-level workflows.
 - Main optimization target: remove any need for Hermes or another LLM to decide animations. The model should solve functional tasks; Clawd should translate request lifecycle into UI state.
 
 Known constraints remain:
@@ -117,6 +123,7 @@ Useful commands:
 - Prefer Hermes API Server/Gateway for the next-stage backbone. If Hermes is offline, Clawd should show setup/status information rather than silently falling back to a different execution path.
 - Keep frontend boards simple and transparent. The pet is the primary visual object; boards should support the pet, not become the product's center of gravity.
 - Do not remove non-core support code as "dead" without a dedicated cleanup pass that proves it is unused and records the decision in this spec or an adjacent doc.
+- Hermes integration must remain self-contained within the Clawd repo. Do not modify the installed Hermes package; use `PYTHONPATH` injection and environment variables for any in-process hooks.
 
 ## Not In Scope For This Spec
 
@@ -132,13 +139,14 @@ Roadmap is a living section. It should record sequence and intent, not implement
 
 Intent: make the repository easier for AI agents and maintainers to reason about.
 
-Status: mostly complete.
+Status: complete / maintenance.
 
 Expected outcomes:
 
 - Keep this file aligned with the actual codebase and documented commands.
 - Clarify current product scope and constraints before deciding future roadmap items.
 - Fix small technical mismatches discovered during repository scans.
+- Continue making small high-level spec updates when product intent changes.
 
 ### Phase 1: Clawd As Hermes Frontend Shell
 
@@ -155,9 +163,29 @@ Product shape:
 - Backend: Hermes is the primary backbone for complex tasks, skills, memory, and future delegation.
 - Frontend: Clawd owns animation, layout, state mapping, and user feedback.
 
+Completed so far:
+
+- Clawd can open a Hermes-backed chat interaction from the pet-centered UI.
+- The Hermes chat panel sits on the left side of the pet.
+- The Hermes chat panel supports a draggable titlebar, session-persistent manual position, file/folder drop context insertion, and visually distinct Clear and Close controls.
+- Hermes dangerous-command permission requests can route through Clawd's permission bubble UI while preserving the underlying agent fallback path.
+- The right-side provider usage HUD exists and includes MiniMax-aware refresh behavior.
+- The translation bubble is pet-attached and aligned above the pet with desktop-safe fallback positioning.
+
+Currently in progress:
+
+- Clean up Settings into an AI-work-oriented surface that groups Hermes, agent permissions, translation, provider usage, and related diagnostics.
+- Improve Hermes setup, offline, health, and activity visibility in the desktop UI.
+- Keep advanced AI command, path, timeout, and diagnostic controls available without making them the default user-facing settings experience.
+
+Still pending:
+
+- Prefer Hermes API Server/Gateway as the primary backend path once it is stable enough for desktop integration.
+- Expand Hermes lifecycle mapping beyond one-shot chat into durable task/workflow states.
+- Add Hermes health/activity status into the compact provider/status board.
+
 Expected outcomes:
 
-- Clawd can start a Hermes-backed interaction from the pet-centered UI.
 - Clawd maps Hermes lifecycle locally: request start means thinking/working, success means attention/idle, failure means error or offline/setup state.
 - Hermes returns functional results only; it does not send animation commands.
 - If Hermes API Server/Gateway is unavailable, Clawd shows clear setup/offline status.
@@ -174,7 +202,7 @@ Non-goals:
 
 Intent: grow Hermes from a chat backend into the durable task backbone behind Clawd.
 
-Status: future.
+Status: future — begins after Phase 1 settings cleanup and Hermes Gateway/API integration stabilize.
 
 Expected outcomes:
 

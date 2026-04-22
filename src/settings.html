@@ -887,6 +887,57 @@ html, body {
 }
 .toast.visible { opacity: 1; transform: translateY(0); }
 .toast.error { background: var(--toast-error); }
+
+/* ── Collapsed / advanced settings sections ── */
+details.settings-collapsed-section {
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+}
+details.settings-collapsed-section summary.settings-collapsed-summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: rgba(0, 0, 0, 0.03);
+  border-radius: 10px;
+}
+@media (prefers-color-scheme: dark) {
+  details.settings-collapsed-section summary.settings-collapsed-summary {
+    background: rgba(255, 255, 255, 0.04);
+  }
+}
+details.settings-collapsed-section summary.settings-collapsed-summary::-webkit-details-marker { display: none; }
+details.settings-collapsed-section summary.settings-collapsed-summary::before {
+  content: "\u25B6";
+  font-size: 9px;
+  color: var(--text-tertiary);
+  transition: transform 0.15s ease;
+  flex-shrink: 0;
+}
+details.settings-collapsed-section[open] summary.settings-collapsed-summary::before {
+  transform: rotate(90deg);
+}
+details.settings-collapsed-section summary.settings-collapsed-summary:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+@media (prefers-color-scheme: dark) {
+  details.settings-collapsed-section summary.settings-collapsed-summary:hover {
+    background: rgba(255, 255, 255, 0.06);
+  }
+}
+details.settings-collapsed-section .section-rows {
+  border-top: none;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
 </style>
 </head>
 <body>

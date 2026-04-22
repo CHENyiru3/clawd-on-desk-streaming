@@ -143,6 +143,7 @@ const _settingsController = createSettingsController({
         runHermesChat({
           text: "Hello, respond with just the word 'ok'.",
           config,
+          ctx: { clawdServerPort: getHookServerPort() },
           onToken: () => {},
           onComplete: (ok, message, code) => {
             resolve({
@@ -277,10 +278,14 @@ function getTimeCheckinGeneratorConfig() {
 
 function getProviderUsageCheckerConfig() {
   const cfg = _settingsController.get("providerUsageChecker") || {};
+  // Clawd must enforce a minimum 180s timeout — Playwright needs 90-120s
+  const CHECKER_MIN_TIMEOUT_MS = 180000;
+  const savedTimeout = cfg.timeoutMs;
+  const effectiveTimeout = savedTimeout >= CHECKER_MIN_TIMEOUT_MS ? savedTimeout : CHECKER_MIN_TIMEOUT_MS;
   return {
     python: cfg.python || "python3",
     scriptPath: cfg.scriptPath || "",
-    timeoutMs: cfg.timeoutMs || 30000,
+    timeoutMs: effectiveTimeout,
     browser: cfg.browser || "auto",
     includeMiniMax: !!_settingsController.get("providerUsageMiniMaxEnabled"),
   };
@@ -793,6 +798,8 @@ let win;
 let hitWin;  // input window — small opaque rect over hitbox, receives all pointer events
 let tray = null;
 let chatPanel = null;  // Hermes chat panel — opens next to the pet
+let chatPanelUserMoved = false;
+let chatPanelLastAutoBounds = null;
 let contextMenuOwner = null;
 // Mirror of _settingsController.get("size") — initialized from disk, kept in
 // sync by the settings subscriber. The legacy S/M/L → P:N migration runs
@@ -834,7 +841,11 @@ function getChatPanelBounds() {
 
 function positionChatPanel() {
   if (!chatPanel || chatPanel.isDestroyed()) return;
-  chatPanel.setBounds(getChatPanelBounds());
+  if (!chatPanelUserMoved) {
+    const bounds = getChatPanelBounds();
+    chatPanelLastAutoBounds = bounds;
+    chatPanel.setBounds(bounds);
+  }
 }
 
 function openChatPanel() {
@@ -883,9 +894,24 @@ function openChatPanel() {
 
   chatPanel.on("closed", () => {
     chatPanel = null;
+    chatPanelUserMoved = false;
+    chatPanelLastAutoBounds = null;
     hermesChatBusy = false;
     const hc = _settingsController.get("hermesChat") || {};
     updateHermesStatus(hc.command && hc.command.trim() ? "available" : "offline");
+  });
+
+  // Track when the user manually drags the window so we don't snap it back
+  chatPanel.on("moved", () => {
+    if (!chatPanel || chatPanel.isDestroyed()) return;
+    const current = chatPanel.getBounds();
+    if (chatPanelLastAutoBounds &&
+        current.x === chatPanelLastAutoBounds.x &&
+        current.y === chatPanelLastAutoBounds.y) {
+      // This was a programmatic reposition — not a manual drag
+      return;
+    }
+    chatPanelUserMoved = true;
   });
 
   chatPanel.on("blur", () => {
@@ -1110,6 +1136,7 @@ ipcMain.on("chat-send", (event, { text }) => {
 
   hermesChatBusy = true;
   sendToChat("chat-busy", { busy: true });
+  const hermesRunId = `chat:${Date.now()}`;
 
   // Instant state: thinking
   setHermesVisualState("thinking");
@@ -1117,6 +1144,7 @@ ipcMain.on("chat-send", (event, { text }) => {
   runHermesChat({
     text: text.trim(),
     config,
+    ctx: { clawdServerPort: getHookServerPort(), hermesSessionId: hermesRunId },
     onToken(chunk, isFirst) {
       sendToChat("chat-token", { chunk, isFirst, isLast: false });
       // First token → switch to working so juggling/typing shows
@@ -1126,6 +1154,7 @@ ipcMain.on("chat-send", (event, { text }) => {
       }
     },
     onComplete(ok, message, code) {
+      denyHermesPermissionsForSession(hermesRunId, "Hermes chat ended");
       hermesChatBusy = false;
       sendToChat("chat-busy", { busy: false });
 
@@ -1174,8 +1203,52 @@ ipcMain.on("chat-send", (event, { text }) => {
   });
 });
 
+ipcMain.on("chat-permission-decide", (_event, payload) => {
+  const id = payload && typeof payload.id === "string" ? payload.id : "";
+  const behavior = payload && typeof payload.behavior === "string" ? payload.behavior : "";
+  if (!id || !behavior) return;
+  const perm = pendingPermissions.find((p) => p && p.isHermes && p.id === id);
+  if (!perm) {
+    sendToChat("chat-permission-resolved", { id, choice: "missing" });
+    return;
+  }
+  if (!behavior.startsWith("hermes-")) return;
+  perm._hermesChoice = behavior.replace(/^hermes-/, "");
+  resolvePermissionEntry(perm, perm._hermesChoice === "deny" ? "deny" : "allow");
+});
+
 function sendToChat(channel, ...args) {
   if (chatPanel && !chatPanel.isDestroyed()) chatPanel.webContents.send(channel, ...args);
+}
+
+function buildHermesPermissionChatPayload(permEntry) {
+  if (!permEntry || !permEntry.isHermes) return null;
+  return {
+    id: permEntry.id,
+    sessionId: permEntry.sessionId,
+    toolName: permEntry.toolName,
+    toolInput: permEntry.toolInput || {},
+    hermesAllowPermanent: !!permEntry.hermesAllowPermanent,
+  };
+}
+
+function sendHermesPermissionToChat(permEntry) {
+  const payload = buildHermesPermissionChatPayload(permEntry);
+  if (!payload) return;
+  sendToChat("chat-permission-request", payload);
+}
+
+function clearHermesPermissionFromChat(permEntry, choice) {
+  if (!permEntry || !permEntry.isHermes) return;
+  sendToChat("chat-permission-resolved", { id: permEntry.id, choice: choice || "deny" });
+}
+
+function denyHermesPermissionsForSession(sessionId, message) {
+  if (!sessionId) return;
+  const matches = pendingPermissions.filter((p) => p && p.isHermes && p.sessionId === sessionId);
+  for (const perm of matches) {
+    resolvePermissionEntry(perm, "deny", message || "Hermes chat ended");
+  }
 }
 
 function pushAgentLauncherToHit() {
@@ -1318,6 +1391,7 @@ const _permCtx = {
     const s = sessions.get(sessionId);
     if (s && s.sourcePid) focusTerminalWindow(s.sourcePid, s.cwd, s.editor, s.pidChain);
   },
+  onHermesPermissionResolved: (permEntry, choice) => clearHermesPermissionFromChat(permEntry, choice),
 };
 const _perm = require("./permission")(_permCtx);
 const { showPermissionBubble, resolvePermissionEntry, sendPermissionResponse, repositionBubbles, permLog, PASSTHROUGH_TOOLS, showCodexNotifyBubble, clearCodexNotifyBubbles, syncPermissionShortcuts, replyOpencodePermission } = _perm;
@@ -1332,34 +1406,51 @@ let translateHideTimer = null;
 let translateMeasuredHeight = 0;
 
 const TRANSLATE_BUBBLE_WIDTH = 300;
-const TRANSLATE_BUBBLE_MARGIN = 8;
 const TRANSLATE_BUBBLE_GAP = 6;
 
+const {
+  computeTranslateBubbleBounds,
+  deferTranslateMacVisibility,
+} = require("./translate-bubble-position");
+
 function computeTranslateBubblePosition() {
-  if (!win || win.isDestroyed()) return { x: 100, y: 100 };
+  if (!win || win.isDestroyed()) return { x: 100, y: 100, width: TRANSLATE_BUBBLE_WIDTH };
   const petBounds = win.getBounds();
   const cx = petBounds.x + petBounds.width / 2;
   const cy = petBounds.y + petBounds.height / 2;
   const wa = getNearestWorkArea(cx, cy);
-  const hitRect = bubbleFollowPet && typeof getHitRectScreen === "function"
+  // Translation bubble is always pet-attached (direct hotkey interaction),
+  // independent of the global bubbleFollowPet setting.
+  const hitRect = typeof getHitRectScreen === "function"
     ? getHitRectScreen(petBounds)
     : null;
 
-  // Layout: above pet if enough room, else bottom-right corner
-  let x;
-  if (hitRect) {
-    const hitTop = Math.round(hitRect.top);
-    const totalH = translateMeasuredHeight + 12;
-    if (hitTop - wa.y >= totalH) {
-      // Enough room above — place bubble there
-      x = Math.max(wa.x, Math.min(cx - Math.round(TRANSLATE_BUBBLE_WIDTH / 2), wa.x + wa.width - TRANSLATE_BUBBLE_WIDTH));
-      return { x, y: hitTop - totalH, width: TRANSLATE_BUBBLE_WIDTH };
-    }
+  if (!hitRect) {
+    // Fallback: bottom-right of work area (legacy path for themes without hitbox)
+    const edgeMargin = 8;
+    return {
+      x: wa.x + wa.width - TRANSLATE_BUBBLE_WIDTH - edgeMargin,
+      y: wa.y + wa.height - (translateMeasuredHeight || 120) - 12 - edgeMargin,
+      width: TRANSLATE_BUBBLE_WIDTH,
+    };
   }
-  // Fallback: bottom-right of work area
-  x = wa.x + wa.width - TRANSLATE_BUBBLE_WIDTH - TRANSLATE_BUBBLE_MARGIN;
-  const y = wa.y + wa.height - translateMeasuredHeight - 12 - TRANSLATE_BUBBLE_MARGIN;
-  return { x, y, width: TRANSLATE_BUBBLE_WIDTH };
+
+  const height = translateMeasuredHeight || 120;
+  return computeTranslateBubbleBounds({
+    workArea: wa,
+    hitRect,
+    width: TRANSLATE_BUBBLE_WIDTH,
+    height,
+    gap: TRANSLATE_BUBBLE_GAP,
+    edgeMargin: 8,
+  });
+}
+
+function repositionTranslateBubble() {
+  if (!translateWin || translateWin.isDestroyed()) return;
+  const pos = computeTranslateBubblePosition();
+  const height = translateMeasuredHeight || 120;
+  translateWin.setBounds({ ...pos, height: height + 12 });
 }
 
 function createTranslateWin() {
@@ -1385,6 +1476,7 @@ function createTranslateWin() {
   });
   translateWin.loadFile(path.join(__dirname, "translate-bubble.html"));
   translateWin.on("closed", () => { translateWin = null; });
+  guardAlwaysOnTop(translateWin);
 }
 
 function showTranslateBubble() {
@@ -1392,9 +1484,10 @@ function showTranslateBubble() {
   createTranslateWin();
   if (translateHideTimer) { clearTimeout(translateHideTimer); translateHideTimer = null; }
   const pos = computeTranslateBubblePosition();
-  translateMeasuredHeight = translateMeasuredHeight || 120;
-  translateWin.setBounds({ ...pos, height: translateMeasuredHeight + 12 });
-  translateWin.show();
+  const height = translateMeasuredHeight || 120;
+  translateWin.setBounds({ ...pos, height: height + 12 });
+  translateWin.showInactive();
+  if (isMac) deferTranslateMacVisibility(translateWin, reapplyMacVisibility);
 }
 
 function showTranslateBubblePayload(payload) {
@@ -1687,8 +1780,8 @@ function handleTranslateHeight(event, height) {
   if (senderWin !== translateWin) return;
   if (typeof height === "number" && height > 0) {
     translateMeasuredHeight = Math.ceil(height);
-    const pos = computeTranslateBubblePosition();
-    translateWin.setBounds({ ...pos, height: translateMeasuredHeight + 12 });
+    repositionTranslateBubble();
+    guardAlwaysOnTop(translateWin);
   }
 }
 
@@ -1730,6 +1823,7 @@ _timeCheckinBubble = initTimeCheckinBubble(_updateBubbleCtx);
 function repositionFloatingBubbles() {
   if (pendingPermissions.length) repositionBubbles();
   repositionUpdateBubble();
+  repositionTranslateBubble();
   if (_timeCheckinBubble) _timeCheckinBubble.reposition();
 }
 
@@ -2040,6 +2134,8 @@ const _serverCtx = {
   sendPermissionResponse,
   showPermissionBubble,
   replyOpencodePermission,
+  isHermesChatOpen: () => !!(chatPanel && !chatPanel.isDestroyed()),
+  onHermesPermissionRequest: (permEntry) => sendHermesPermissionToChat(permEntry),
   permLog,
 };
 const _server = require("./server")(_serverCtx);

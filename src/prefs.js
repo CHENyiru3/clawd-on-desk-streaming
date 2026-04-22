@@ -150,6 +150,8 @@ const SCHEMA = {
       "codebuddy": { enabled: true, permissionsEnabled: true },
       "kiro-cli": { enabled: true, permissionsEnabled: true },
       "opencode": { enabled: true, permissionsEnabled: true },
+      // Hermes: CLI dangerous-command approvals routed through Clawd bubble.
+      "hermes": { enabled: true, permissionsEnabled: true },
     }),
     normalize: normalizeAgents,
   },
@@ -185,7 +187,7 @@ const SCHEMA = {
       command: "hermes",
       args: [],
       cwd: "",
-      timeoutMs: 180000,
+      timeoutMs: 300000,
     }),
   },
 };

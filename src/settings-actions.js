@@ -138,9 +138,9 @@ function requireTimeCheckinGenerator(value) {
     typeof value.timeoutMs !== "number"
     || !Number.isFinite(value.timeoutMs)
     || value.timeoutMs < 5000
-    || value.timeoutMs > 300000
+    || value.timeoutMs > 120000
   ) {
-    return { status: "error", message: "timeCheckinGenerator.timeoutMs must be between 5000 and 300000" };
+    return { status: "error", message: "timeCheckinGenerator.timeoutMs must be between 5000 and 120000" };
   }
   return { status: "ok" };
 }
@@ -321,6 +321,31 @@ const updateRegistry = {
     return { status: "ok" };
   },
   providerUsageChecker: requireProviderUsageChecker,
+
+  // ── hermesChat configuration ──
+  hermesChat(value) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) {
+      return { status: "error", message: "hermesChat must be a plain object" };
+    }
+    if (typeof value.command !== "string" || !value.command.trim()) {
+      return { status: "error", message: "hermesChat.command must be a non-empty string" };
+    }
+    if (!Array.isArray(value.args) || value.args.some((entry) => typeof entry !== "string")) {
+      return { status: "error", message: "hermesChat.args must be a string array" };
+    }
+    if (typeof value.cwd !== "string") {
+      return { status: "error", message: "hermesChat.cwd must be a string" };
+    }
+    if (
+      typeof value.timeoutMs !== "number"
+      || !Number.isFinite(value.timeoutMs)
+      || value.timeoutMs < 10000
+      || value.timeoutMs > 600000
+    ) {
+      return { status: "error", message: "hermesChat.timeoutMs must be between 10000 and 600000" };
+    }
+    return { status: "ok" };
+  },
 
   // ── System-backed prefs (object-form: validate + effect pre-commit gate) ──
   //

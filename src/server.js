@@ -30,6 +30,11 @@ function shouldBypassOpencodeBubble(ctx) {
   return !ctx.isAgentPermissionsEnabled("opencode");
 }
 
+function shouldBypassHermesBubble(ctx) {
+  if (typeof ctx.isAgentPermissionsEnabled !== "function") return false;
+  return !ctx.isAgentPermissionsEnabled("hermes");
+}
+
 module.exports = function initServer(ctx) {
 
 const fsApi = ctx.fs || fs;
@@ -441,6 +446,7 @@ function startHttpServer() {
             }
 
             const permEntry = {
+              id: `hermes:${sessionId}:${Date.now()}`,
               res: null,
               abortHandler: null,
               suggestions: [],
@@ -463,6 +469,9 @@ function startHttpServer() {
             ctx.permLog(`opencode showing bubble: tool=${toolName} session=${sessionId}`);
             try {
               ctx.showPermissionBubble(permEntry);
+              if (typeof ctx.onHermesPermissionRequest === "function") {
+                ctx.onHermesPermissionRequest(permEntry);
+              }
             } catch (bubbleErr) {
               // If bubble creation fails (BrowserWindow error, bad html,
               // window-positioning crash, etc), we have already 200-ACKed
@@ -475,6 +484,97 @@ function startHttpServer() {
               const popIdx = ctx.pendingPermissions.indexOf(permEntry);
               if (popIdx !== -1) ctx.pendingPermissions.splice(popIdx, 1);
               ctx.replyOpencodePermission({ bridgeUrl, bridgeToken, requestId, reply: "reject", toolName });
+            }
+            return;
+          }
+
+          // ── Hermes branch ──
+          // Hermes is a Clawd child process. It cannot hold an HTTP response
+          // open. The Python bridge (hooks/hermes-permission-bridge.py) writes a
+          // pending request to a tempfile and POSTs here. Clawd 200-ACKs
+          // immediately, renders the bubble, and writes the decision to the same
+          // tempfile. The bridge polls the file and returns the choice to Hermes.
+          if (data.agent_id === "hermes") {
+            res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+            res.end("ok");
+
+            const pollFile = typeof data.bridge_poll_file === "string" ? data.bridge_poll_file : null;
+
+            // Deny helper — writes {choice:"deny"} to Hermes poll file synchronously.
+            const denyViaPollFile = () => {
+              if (pollFile) {
+                try {
+                  fsApi.writeFileSync(pollFile, JSON.stringify({ choice: "deny" }), "utf8");
+                } catch {}
+              }
+            };
+
+            // Agent gate: Hermes disabled → deny via poll file immediately.
+            if (typeof ctx.isAgentEnabled === "function" && !ctx.isAgentEnabled("hermes")) {
+              ctx.permLog("hermes disabled → deny via poll file");
+              denyViaPollFile();
+              return;
+            }
+
+            // DND: deny via poll file (no bubble; Hermes falls back to its own timeout).
+            if (ctx.doNotDisturb) {
+              ctx.permLog("hermes DND → deny via poll file");
+              denyViaPollFile();
+              return;
+            }
+
+            const toolName = typeof data.tool_name === "string" && data.tool_name ? data.tool_name : "HermesExec";
+            const rawInput = data.tool_input && typeof data.tool_input === "object" ? data.tool_input : {};
+            const toolInput = truncateDeep(rawInput);
+            const sessionId = typeof data.session_id === "string" ? data.session_id : "default";
+            const allowPermanent = !!(rawInput && rawInput.allow_permanent);
+
+            const hermesChatOpen =
+              typeof ctx.isHermesChatOpen === "function" && ctx.isHermesChatOpen();
+
+            // Permissions sub-gate off → deny. If bubbles are hidden but the
+            // Hermes chat panel is open, the chat approval card is still a
+            // visible user decision surface.
+            if (shouldBypassHermesBubble(ctx) || (ctx.hideBubbles && !hermesChatOpen)) {
+              ctx.permLog(`hermes bubble suppressed: tool=${toolName} — deny via poll file`);
+              denyViaPollFile();
+              return;
+            }
+
+            const permEntry = {
+              id: `hermes:${sessionId}:${Date.now()}`,
+              res: null,
+              abortHandler: null,
+              suggestions: [],
+              sessionId,
+              bubble: null,
+              hideTimer: null,
+              toolName,
+              toolInput,
+              resolvedSuggestion: null,
+              createdAt: Date.now(),
+              agentId: "hermes",
+              isHermes: true,
+              hermesBridgePollFile: pollFile,
+              hermesAllowPermanent: allowPermanent,
+            };
+            ctx.pendingPermissions.push(permEntry);
+
+            if (hermesChatOpen && typeof ctx.onHermesPermissionRequest === "function") {
+              ctx.onHermesPermissionRequest(permEntry);
+            }
+
+            try {
+              if (!ctx.hideBubbles) {
+                ctx.showPermissionBubble(permEntry);
+              }
+            } catch (bubbleErr) {
+              ctx.permLog(`hermes bubble failed: ${bubbleErr && bubbleErr.message} — deny via poll file`);
+              if (!hermesChatOpen) {
+                const idx = ctx.pendingPermissions.indexOf(permEntry);
+                if (idx !== -1) ctx.pendingPermissions.splice(idx, 1);
+                denyViaPollFile();
+              }
             }
             return;
           }
@@ -661,4 +761,4 @@ return {
 
 };
 
-module.exports.__test = { shouldBypassCCBubble, shouldBypassOpencodeBubble };
+module.exports.__test = { shouldBypassCCBubble, shouldBypassOpencodeBubble, shouldBypassHermesBubble };

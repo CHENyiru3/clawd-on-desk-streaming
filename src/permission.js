@@ -2,6 +2,7 @@
 // Extracted from main.js L349-357, L1594-1746
 
 const { BrowserWindow, globalShortcut } = require("electron");
+const fs = require("fs");
 const path = require("path");
 const http = require("http");
 const {
@@ -339,6 +340,9 @@ function showPermissionBubble(permEntry) {
       opencodePatterns: permEntry.opencodePatterns || [],
       sessionFolder,
       sessionShortId,
+      // Hermes fields
+      isHermes: permEntry.isHermes || false,
+      hermesAllowPermanent: permEntry.hermesAllowPermanent || false,
     });
     // Don't call bub.focus() — it steals focus from terminal and can trigger
     // false "User answered in terminal" denials in Claude Code, wasting tokens.
@@ -416,6 +420,22 @@ function resolvePermissionEntry(permEntry, behavior, message) {
       reply,
       toolName: permEntry.toolName,
     });
+    return;
+  }
+
+  // Hermes: write the user's decision to the poll file so the Python bridge unblocks.
+  if (permEntry.isHermes && permEntry.hermesBridgePollFile) {
+    const choice = permEntry._hermesChoice || (behavior === "deny" ? "deny" : "once");
+    try {
+      const fd = fs.openSync(permEntry.hermesBridgePollFile, "w");
+      fs.writeSync(fd, JSON.stringify({ choice }), null, "utf8");
+      fs.closeSync(fd);
+    } catch (writeErr) {
+      permLog(`hermes poll file write failed: ${writeErr && writeErr.message}`);
+    }
+    if (typeof ctx.onHermesPermissionResolved === "function") {
+      try { ctx.onHermesPermissionResolved(permEntry, choice); } catch {}
+    }
     return;
   }
 
@@ -600,6 +620,10 @@ function handleDecide(event, behavior) {
     repositionBubbles();
     syncPermissionShortcuts();
     ctx.focusTerminalForSession(perm.sessionId);
+  } else if (perm.isHermes && typeof behavior === "string" && behavior.startsWith("hermes-")) {
+    // Hermes: map button behaviors (hermes-once/session/always/deny) to choice tag.
+    perm._hermesChoice = behavior.replace(/^hermes-/, "");
+    resolvePermissionEntry(perm, perm._hermesChoice === "deny" ? "deny" : "allow");
   } else {
     resolvePermissionEntry(perm, behavior === "allow" ? "allow" : "deny");
   }
@@ -676,6 +700,17 @@ function dismissPermissionsByAgent(agentId) {
     //   commit 9f90... spike 2026-04-07).
     if (!perm.isOpencode && perm.res && !perm.res.destroyed) {
       try { perm.res.destroy(); } catch {}
+    }
+    // Hermes: write deny to poll file so the bridge unblocks cleanly.
+    if (perm.isHermes && perm.hermesBridgePollFile) {
+      try {
+        const fd = fs.openSync(perm.hermesBridgePollFile, "w");
+        fs.writeSync(fd, JSON.stringify({ choice: "deny" }), null, "utf8");
+        fs.closeSync(fd);
+      } catch {}
+      if (typeof ctx.onHermesPermissionResolved === "function") {
+        try { ctx.onHermesPermissionResolved(perm, "deny"); } catch {}
+      }
     }
   }
   repositionBubbles();

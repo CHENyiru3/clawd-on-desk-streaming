@@ -136,6 +136,7 @@ body { padding: 6px; }
 .tool-pill[data-tool="Agent"] { background: #c47a9a; }
 .tool-pill[data-tool="Shell"] { background: #d97757; }
 .tool-pill[data-tool="CodexExec"] { background: #2563eb; }
+.tool-pill[data-tool="HermesExec"] { background: #c47a9a; }
 
 /* ── Session tag (folder + short id, hidden when absent) ── */
 .session-tag {
@@ -437,6 +438,11 @@ const BUBBLE_STRINGS = {
     planReview: "Plan Review",
     approve: "Approve",
     reject: "Reject",
+    hermesPermission: "Hermes Permission",
+    hermesAllowOnce: "Allow Once",
+    hermesAllowSession: "Allow Session",
+    hermesAllowAlways: "Allow Always",
+    hermesDeny: "Deny",
   },
   zh: {
     autoAcceptEdits: "\u81EA\u52A8\u63A5\u53D7\u7F16\u8F91",
@@ -460,6 +466,11 @@ const BUBBLE_STRINGS = {
     planReview: "\u8BA1\u5212\u5BA1\u6279",
     approve: "\u6279\u51C6",
     reject: "\u62D2\u7EDD",
+    hermesPermission: "Hermes \u6743\u9650\u8BF7\u6C42",
+    hermesAllowOnce: "\u6682\u65F6\u5141\u8BB8",
+    hermesAllowSession: "\u672C\u6B21\u4F1A\u8BDD\u5141\u8BB8",
+    hermesAllowAlways: "\u59CB\u7EC8\u5141\u8BB8",
+    hermesDeny: "\u62D2\u7EDD",
   },
 };
 
@@ -723,6 +734,48 @@ function show(data) {
     btnAllow.disabled = false;
     btnDeny.style.display = "none";
     suggestionsContainer.innerHTML = "";
+    revealCard();
+    return;
+  }
+
+  // Hermes dangerous-command permission bubble.
+  if (data.isHermes) {
+    headerTitle.textContent = bubbleText(data.lang, "hermesPermission");
+    toolPill.textContent = "HERMES";
+    toolPill.setAttribute("data-tool", "HermesExec");
+    toolPill.style.display = "";
+
+    const input = (data.toolInput && typeof data.toolInput === "object") ? data.toolInput : {};
+    const cmd = typeof input.command === "string" ? input.command : "(unknown command)";
+    const desc = typeof input.description === "string" && input.description
+      ? input.description + "\n" + cmd
+      : cmd;
+    commandBlock.textContent = truncate(desc, 200);
+
+    btnAllow.style.display = "none";
+    btnDeny.style.display = "none";
+    suggestionsContainer.innerHTML = "";
+
+    const choices = [
+      { key: "hermesAllowOnce",   behavior: "hermes-once"   },
+      { key: "hermesAllowSession", behavior: "hermes-session" },
+      { key: "hermesDeny",        behavior: "hermes-deny"    },
+    ];
+    if (data.hermesAllowPermanent) {
+      choices.splice(2, 0, { key: "hermesAllowAlways", behavior: "hermes-always" });
+    }
+
+    choices.forEach(function(choice) {
+      var btn = document.createElement("button");
+      btn.className = "btn-suggestion";
+      btn.textContent = bubbleText(data.lang, choice.key);
+      btn.addEventListener("click", function() {
+        disableAll();
+        window.bubbleAPI.decide(choice.behavior);
+      });
+      suggestionsContainer.appendChild(btn);
+    });
+
     revealCard();
     return;
   }

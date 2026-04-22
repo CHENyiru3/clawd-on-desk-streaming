@@ -19,21 +19,29 @@ const STRINGS = {
     settingsTitle: "Settings",
     settingsSubtitle: "Configure how Clawd behaves on your desktop.",
     sidebarGeneral: "General",
-    sidebarAgents: "Agents",
+    sidebarAIWork: "AI Work",
     sidebarTheme: "Theme",
     sidebarAnimMap: "Animation Map",
     sidebarAnimOverrides: "Animation Overrides",
-    sidebarShortcuts: "Shortcuts",
-    sidebarAbout: "About",
-    sidebarSoon: "Soon",
     sectionAppearance: "Appearance",
     sectionTranslation: "Translation",
-    sectionDiagnostics: "Diagnostics",
     sectionGlobalActivity: "Global Activity",
     sectionTimeCheckins: "Time Check-ins",
     sectionProviderUsage: "Provider Usage HUD",
     sectionStartup: "Startup",
     sectionBubbles: "Bubbles",
+    sectionAIWorkHermes: "Hermes",
+    sectionAIWorkAgents: "Agents & Permissions",
+    sectionAIWorkTranslation: "Translation & MiniMax",
+    sectionAIWorkProviderUsage: "Provider Usage",
+    sectionAIWorkTimeCheckin: "Time Check-ins",
+    sectionDiagnostics: "Diagnostics",
+    sectionAdvancedHermes: "Advanced Hermes",
+    sectionAdvancedProviderUsage: "Advanced Provider Usage",
+    rowTranslationHotkey: "Translation hotkey",
+    actionRunningHermesTest: "Testing\u2026",
+    actionRunningTimeCheckin: "Testing\u2026",
+    actionRunningProviderRefresh: "Refreshing\u2026",
     agentsTitle: "Agents",
     agentsSubtitle: "Turn tracking on or off per agent. Disabled agents stop log monitors and drop hook events at the HTTP boundary — they won't drive the pet, show permission bubbles, or keep sessions.",
     agentsEmpty: "No agents registered.",
@@ -267,21 +275,29 @@ const STRINGS = {
     settingsTitle: "设置",
     settingsSubtitle: "配置 Clawd 在桌面上的行为。",
     sidebarGeneral: "通用",
-    sidebarAgents: "Agent 管理",
+    sidebarAIWork: "AI 工作区",
     sidebarTheme: "主题",
     sidebarAnimMap: "动画映射",
     sidebarAnimOverrides: "动画替换",
-    sidebarShortcuts: "快捷键",
-    sidebarAbout: "关于",
-    sidebarSoon: "待推出",
     sectionAppearance: "外观",
     sectionTranslation: "翻译",
-    sectionDiagnostics: "诊断",
     sectionGlobalActivity: "全局活动",
     sectionTimeCheckins: "整点问候",
     sectionProviderUsage: "用量状态条",
     sectionStartup: "启动",
     sectionBubbles: "气泡",
+    sectionAIWorkHermes: "Hermes",
+    sectionAIWorkAgents: "Agent 管理",
+    sectionAIWorkTranslation: "翻译与 MiniMax",
+    sectionAIWorkProviderUsage: "Provider 用量",
+    sectionAIWorkTimeCheckin: "整点问候",
+    sectionDiagnostics: "诊断",
+    sectionAdvancedHermes: "高级 Hermes",
+    sectionAdvancedProviderUsage: "高级 Provider 用量",
+    rowTranslationHotkey: "翻译快捷键",
+    actionRunningHermesTest: "测试中\u2026",
+    actionRunningTimeCheckin: "测试中\u2026",
+    actionRunningProviderRefresh: "刷新中\u2026",
     agentsTitle: "Agent 管理",
     agentsSubtitle: "按 agent 类型开关追踪。关闭后会停掉日志监视器、在 HTTP 入口丢弃 hook 事件——不会再驱动桌宠、不弹权限气泡、不记会话。",
     agentsEmpty: "没有已注册的 agent。",
@@ -555,7 +571,7 @@ const _HERMES_CHAT_DEFAULTS = {
   command: "hermes",
   args: [],
   cwd: "",
-  timeoutMs: 180000,
+  timeoutMs: 300000,
 };
 function readHermesChatPrefs() {
   const hc = snapshot && snapshot.hermesChat;
@@ -601,12 +617,10 @@ function showToast(message, { error = false, ttl = 3500 } = {}) {
 // ── Sidebar ──
 const SIDEBAR_TABS = [
   { id: "general", icon: "\u2699", labelKey: "sidebarGeneral", available: true },
-  { id: "agents", icon: "\u26A1", labelKey: "sidebarAgents", available: true },
+  { id: "aiwork", icon: "\u26A1", labelKey: "sidebarAIWork", available: true },
   { id: "theme", icon: "\u{1F3A8}", labelKey: "sidebarTheme", available: true },
   { id: "animMap", icon: "\u{1F3AC}", labelKey: "sidebarAnimMap", available: true },
   { id: "animOverrides", icon: "\u{1F39E}", labelKey: "sidebarAnimOverrides", available: true },
-  { id: "shortcuts", icon: "\u2328", labelKey: "sidebarShortcuts", available: false },
-  { id: "about", icon: "\u2139", labelKey: "sidebarAbout", available: false },
 ];
 
 function renderSidebar() {
@@ -639,8 +653,8 @@ function renderContent() {
   content.innerHTML = "";
   if (activeTab === "general") {
     renderGeneralTab(content);
-  } else if (activeTab === "agents") {
-    renderAgentsTab(content);
+  } else if (activeTab === "aiwork") {
+    renderAIWorkTab(content);
   } else if (activeTab === "theme") {
     renderThemeTab(content);
   } else if (activeTab === "animMap") {
@@ -1815,28 +1829,36 @@ function renderAssetPickerModal() {
   root.appendChild(overlay);
 }
 
-function renderAgentsTab(parent) {
+function renderAIWorkTab(parent) {
   const h1 = document.createElement("h1");
-  h1.textContent = t("agentsTitle");
+  h1.textContent = t("sidebarAIWork");
   parent.appendChild(h1);
 
   const subtitle = document.createElement("p");
   subtitle.className = "subtitle";
-  subtitle.textContent = t("agentsSubtitle");
+  subtitle.textContent = t("settingsSubtitle");
   parent.appendChild(subtitle);
 
-  if (!agentMetadata || agentMetadata.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "placeholder";
-    empty.innerHTML = `<div class="placeholder-desc">${escapeHtml(t("agentsEmpty"))}</div>`;
-    parent.appendChild(empty);
-  } else {
-    const rows = agentMetadata.flatMap((agent) => buildAgentRows(agent));
-    parent.appendChild(buildSection("", rows));
-  }
+  // Section: Hermes (chat config + launcher)
+  parent.appendChild(buildSection(t("sectionAIWorkHermes"), [
+    buildHermesChatSectionInner(),
+    buildAgentLauncherSectionInner(),
+  ]));
 
-  parent.appendChild(buildAgentLauncherSection());
-  parent.appendChild(buildHermesChatSection());
+  // Section: Agents & Permissions
+  parent.appendChild(buildAgentPermissionsSection());
+
+  // Section: Translation & MiniMax
+  parent.appendChild(buildTranslationSection());
+
+  // Section: Provider Usage
+  parent.appendChild(buildProviderUsageSection());
+
+  // Section: Time Check-ins
+  parent.appendChild(buildTimeCheckinsSection());
+
+  // Collapsed Diagnostics
+  parent.appendChild(buildDiagnosticsSection());
 }
 
 function buildHermesChatSection() {
@@ -1879,6 +1901,21 @@ function buildHermesChatSection() {
 
   section.appendChild(wrap);
   return section;
+}
+
+// Inner content (no outer section wrapper) for use in combined AI Work sections.
+function buildHermesChatSectionInner() {
+  const rows = [
+    buildHermesTextRow({ field: "command", labelKey: "rowHermesChatCommand", descKey: "rowHermesChatCommandDesc" }),
+    buildHermesArgsRow(),
+    buildHermesTextRow({ field: "cwd", labelKey: "rowHermesChatCwd", descKey: "rowHermesChatCwdDesc" }),
+    buildHermesTimeoutRow(),
+    buildHermesActionsRow(),
+  ];
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+  for (const r of rows) wrap.appendChild(r);
+  return wrap;
 }
 
 function buildHermesTextRow({ field, labelKey, descKey }) {
@@ -1962,7 +1999,7 @@ function buildHermesTimeoutRow() {
   const input = document.createElement("input");
   input.type = "number";
   input.className = "soft-input";
-  input.value = Math.round((readHermesChatPrefs().timeoutMs || 180000) / 1000);
+  input.value = Math.round((readHermesChatPrefs().timeoutMs || 300000) / 1000);
   input.min = 10;
   input.max = 600;
   input.style.width = "80px";
@@ -1984,11 +2021,11 @@ function buildHermesActionsRow() {
   row.className = "row actions-row";
   // Test button
   const testBtn = document.createElement("button");
-  testBtn.className = "btn-secondary";
+  testBtn.className = "soft-btn accent";
   testBtn.textContent = t("actionTestHermesChat");
   testBtn.addEventListener("click", async () => {
     testBtn.disabled = true;
-    testBtn.textContent = t("checkingForUpdates") || "…";
+    testBtn.textContent = t("actionRunningHermesTest");
     try {
       const result = await window.settingsAPI.command("testHermesChat", {});
       if (result && result.status === "ok") {
@@ -2006,7 +2043,7 @@ function buildHermesActionsRow() {
   });
   // Clear history button
   const clearBtn = document.createElement("button");
-  clearBtn.className = "btn-secondary danger";
+  clearBtn.className = "soft-btn";
   clearBtn.textContent = t("actionClearHermesHistory");
   clearBtn.addEventListener("click", async () => {
     const result = await window.settingsAPI.command("clearHermesHistory", {});
@@ -2049,6 +2086,410 @@ function buildAgentLauncherSection() {
   wrap.appendChild(buildAgentLauncherTriggerRow());
   section.appendChild(wrap);
   return section;
+}
+
+// Inner content (no outer section wrapper) for use in combined AI Work sections.
+function buildAgentLauncherSectionInner() {
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+  wrap.appendChild(buildAgentLauncherEnabledRow());
+  wrap.appendChild(buildAgentLauncherTextRow({
+    field: "command",
+    labelKey: "rowAgentLauncherCommand",
+    descKey: "rowAgentLauncherCommandDesc",
+  }));
+  wrap.appendChild(buildAgentLauncherTextRow({
+    field: "cwd",
+    labelKey: "rowAgentLauncherCwd",
+    descKey: "rowAgentLauncherCwdDesc",
+  }));
+  wrap.appendChild(buildAgentLauncherTriggerRow());
+  return wrap;
+}
+
+function buildAgentPermissionsSection() {
+  const section = document.createElement("section");
+  section.className = "section";
+  const heading = document.createElement("h2");
+  heading.className = "section-title";
+  heading.textContent = t("sectionAIWorkAgents");
+  section.appendChild(heading);
+  const sub = document.createElement("p");
+  sub.className = "subtitle";
+  sub.textContent = t("agentsSubtitle");
+  section.appendChild(sub);
+
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+  if (!agentMetadata || agentMetadata.length === 0) {
+    const empty = document.createElement("div");
+    empty.className = "placeholder";
+    empty.innerHTML = `<div class="placeholder-desc">${escapeHtml(t("agentsEmpty"))}</div>`;
+    wrap.appendChild(empty);
+  } else {
+    for (const agent of agentMetadata) {
+      for (const r of buildAgentRows(agent)) wrap.appendChild(r);
+    }
+  }
+  section.appendChild(wrap);
+  return section;
+}
+
+function buildTranslationSection() {
+  const section = document.createElement("section");
+  section.className = "section";
+  const heading = document.createElement("h2");
+  heading.className = "section-title";
+  heading.textContent = t("sectionAIWorkTranslation");
+  section.appendChild(heading);
+
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+  wrap.appendChild(buildTranslationApiKeyRow());
+  wrap.appendChild(buildTranslationHotkeyRow());
+  wrap.appendChild(buildTranslationStatusRow());
+  section.appendChild(wrap);
+  return section;
+}
+
+function buildTranslationHotkeyRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTranslationHotkey"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowTranslateApiKeyDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  const badge = document.createElement("span");
+  badge.className = "agent-badge";
+  badge.textContent = "Ctrl+Shift+T";
+  ctrl.appendChild(badge);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildTranslationApiKeyRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTranslateApiKey"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowTranslateApiKeyDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.minWidth = "260px";
+  const input = document.createElement("input");
+  input.type = "password";
+  input.className = "soft-input";
+  input.autocomplete = "off";
+  input.spellcheck = false;
+  input.placeholder = "sk-...";
+  input.value = String((snapshot && snapshot.translateApiKey) || "");
+  input.style.minWidth = "220px";
+  input.style.flex = "1";
+  input.addEventListener("blur", () => {
+    Promise.resolve(window.settingsAPI.update("translateApiKey", input.value)).then((result) => {
+      if (!result || result.status !== "ok") {
+        const msg = (result && result.message) || "unknown error";
+        showToast(t("toastSaveFailed") + msg, { error: true });
+        input.value = String((snapshot && snapshot.translateApiKey) || "");
+      }
+    });
+  });
+  ctrl.appendChild(input);
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildTranslationStatusRow() {
+  const translator = snapshot && snapshot.translatorStatus;
+  const row = document.createElement("div");
+  row.className = "row";
+  const statusLine = translator && translator.configured
+    ? `${t("rowTranslatorStatusConfigured")} · ${getTranslatorHealthLabel()}`
+    : `${t("rowTranslatorStatusMissing")} · ${getTranslatorHealthLabel()}`;
+  const lastError = translator && translator.lastError ? translator.lastError : t("rowTranslatorLastErrorNone");
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTranslatorStatus"))}</span>` +
+      `<span class="row-desc">${escapeHtml(statusLine)}</span>` +
+      `<span class="row-desc">${escapeHtml(lastError)}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.style.gap = "8px";
+  ctrl.style.flexWrap = "wrap";
+  ctrl.appendChild(buildActionButton("actionTestTranslator", () => window.settingsAPI.runTranslatorHealthCheck()));
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildProviderUsageSection() {
+  const section = document.createElement("section");
+  section.className = "section";
+  const heading = document.createElement("h2");
+  heading.className = "section-title";
+  heading.textContent = t("sectionAIWorkProviderUsage");
+  section.appendChild(heading);
+
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+  wrap.appendChild(buildSwitchRow({
+    key: "providerUsageHudEnabled",
+    labelKey: "rowProviderUsageHudEnabled",
+    descKey: "rowProviderUsageHudEnabledDesc",
+  }));
+  wrap.appendChild(buildSwitchRow({
+    key: "providerUsageRefreshEnabled",
+    labelKey: "rowProviderUsageRefreshEnabled",
+    descKey: "rowProviderUsageRefreshEnabledDesc",
+  }));
+  wrap.appendChild(buildSwitchRow({
+    key: "providerUsageMiniMaxEnabled",
+    labelKey: "rowProviderUsageMiniMaxEnabled",
+    descKey: "rowProviderUsageMiniMaxEnabledDesc",
+  }));
+  wrap.appendChild(buildTimeCheckinTextRow({
+    key: "providerUsageStaleAfterMinutes",
+    labelKey: "rowProviderUsageStaleAfter",
+    descKey: "rowProviderUsageStaleAfterDesc",
+    format: (value) => String(value || 30),
+    parse: (value) => Number.parseInt(value, 10),
+  }));
+  wrap.appendChild(buildProviderUsageStatusRow());
+  wrap.appendChild(buildProviderUsageActionsRow());
+  section.appendChild(wrap);
+
+  // Advanced collapsed section
+  const advanced = document.createElement("details");
+  advanced.className = "settings-collapsed-section";
+  const summary = document.createElement("summary");
+  summary.className = "settings-collapsed-summary";
+  summary.textContent = t("sectionAdvancedProviderUsage");
+  advanced.appendChild(summary);
+  const advancedContent = document.createElement("div");
+  advancedContent.className = "section-rows";
+  advancedContent.appendChild(buildProviderUsageCheckerRows());
+  advanced.appendChild(advancedContent);
+  section.appendChild(advanced);
+  return section;
+}
+
+function buildProviderUsageCheckerRows() {
+  const cfg = readProviderUsageCheckerPrefs();
+  const rows = [];
+
+  // Python executable
+  const pyRow = document.createElement("div");
+  pyRow.className = "row";
+  pyRow.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml("Python executable")}</span>` +
+      `<span class="row-desc">${escapeHtml("Path to the Python interpreter used to run the checker script.")}</span>` +
+    `</div>`;
+  const pyCtrl = document.createElement("div");
+  pyCtrl.className = "row-control";
+  const pyInput = document.createElement("input");
+  pyInput.type = "text";
+  pyInput.className = "soft-input";
+  pyInput.value = String(cfg.python || "python3");
+  pyInput.autocomplete = "off";
+  pyInput.spellcheck = false;
+  pyInput.addEventListener("blur", () => commitProviderUsageChecker({ python: pyInput.value }));
+  pyCtrl.appendChild(pyInput);
+  pyRow.appendChild(pyCtrl);
+  rows.push(pyRow);
+
+  // Checker script path
+  const scriptRow = document.createElement("div");
+  scriptRow.className = "row";
+  scriptRow.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml("Checker script path")}</span>` +
+      `<span class="row-desc">${escapeHtml("Full path to the provider usage checker Python script.")}</span>` +
+    `</div>`;
+  const scriptCtrl = document.createElement("div");
+  scriptCtrl.className = "row-control";
+  const scriptInput = document.createElement("input");
+  scriptInput.type = "text";
+  scriptInput.className = "soft-input";
+  scriptInput.value = String(cfg.scriptPath || "");
+  scriptInput.autocomplete = "off";
+  scriptInput.spellcheck = false;
+  scriptInput.addEventListener("blur", () => commitProviderUsageChecker({ scriptPath: scriptInput.value }));
+  scriptCtrl.appendChild(scriptInput);
+  scriptRow.appendChild(scriptCtrl);
+  rows.push(scriptRow);
+
+  // Browser selection
+  const browserRow = document.createElement("div");
+  browserRow.className = "row";
+  browserRow.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml("Browser")}</span>` +
+      `<span class="row-desc">${escapeHtml("Which browser to use for scraping the usage page.")}</span>` +
+    `</div>`;
+  const browserCtrl = document.createElement("div");
+  browserCtrl.className = "row-control";
+  const browserSel = document.createElement("select");
+  browserSel.className = "soft-input";
+  for (const opt of ["auto", "firefox", "chrome", "safari"]) {
+    const o = document.createElement("option");
+    o.value = opt;
+    o.textContent = opt.charAt(0).toUpperCase() + opt.slice(1);
+    if (opt === (cfg.browser || "auto")) o.selected = true;
+    browserSel.appendChild(o);
+  }
+  browserSel.addEventListener("change", () => commitProviderUsageChecker({ browser: browserSel.value }));
+  browserCtrl.appendChild(browserSel);
+  browserRow.appendChild(browserCtrl);
+  rows.push(browserRow);
+
+  // Timeout (ms)
+  const timeoutRow = document.createElement("div");
+  timeoutRow.className = "row";
+  timeoutRow.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml("Timeout (ms)")}</span>` +
+      `<span class="row-desc">${escapeHtml("Max time to wait for the checker script. (5000–300000 ms)")}</span>` +
+    `</div>`;
+  const timeoutCtrl = document.createElement("div");
+  timeoutCtrl.className = "row-control";
+  const timeoutInput = document.createElement("input");
+  timeoutInput.type = "number";
+  timeoutInput.className = "soft-input";
+  timeoutInput.value = cfg.timeoutMs || 300000;
+  timeoutInput.min = 5000;
+  timeoutInput.max = 300000;
+  timeoutInput.style.width = "100px";
+  timeoutInput.addEventListener("blur", () => {
+    const val = Number.parseInt(timeoutInput.value, 10);
+    if (!isNaN(val) && val >= 5000 && val <= 300000) {
+      commitProviderUsageChecker({ timeoutMs: val });
+    } else {
+      timeoutInput.value = cfg.timeoutMs || 300000;
+    }
+  });
+  timeoutCtrl.appendChild(timeoutInput);
+  timeoutRow.appendChild(timeoutCtrl);
+  rows.push(timeoutRow);
+
+  return rows.reduce((frag, r) => { frag.appendChild(r); return frag; }, document.createDocumentFragment());
+}
+
+function readProviderUsageCheckerPrefs() {
+  const cfg = snapshot && snapshot.providerUsageChecker;
+  return cfg && typeof cfg === "object" ? cfg : {};
+}
+
+function commitProviderUsageChecker(patch) {
+  const current = readProviderUsageCheckerPrefs();
+  return window.settingsAPI.update("providerUsageChecker", { ...current, ...patch }).then((result) => {
+    if (!result || result.status !== "ok") {
+      showToast(t("toastSaveFailed") + " " + ((result && result.message) || "unknown"), { error: true });
+    }
+  });
+}
+
+function buildTimeCheckinsSection() {
+  const section = document.createElement("section");
+  section.className = "section";
+  const heading = document.createElement("h2");
+  heading.className = "section-title";
+  heading.textContent = t("sectionAIWorkTimeCheckin");
+  section.appendChild(heading);
+
+  const wrap = document.createElement("div");
+  wrap.className = "section-rows";
+  wrap.appendChild(buildSwitchRow({
+    key: "timeCheckinEnabled",
+    labelKey: "rowTimeCheckinEnabled",
+    descKey: "rowTimeCheckinEnabledDesc",
+  }));
+  wrap.appendChild(buildTimeCheckinStaticRow("rowTimeCheckinSchedule", "rowTimeCheckinScheduleDesc"));
+  wrap.appendChild(buildTimeCheckinTextRow({
+    key: "timeCheckinPreviewClipboardWindowMinutes",
+    labelKey: "rowTimeCheckinWindow",
+    descKey: "rowTimeCheckinWindowDesc",
+    format: (value) => String(value || 60),
+    parse: (value) => Number.parseInt(value, 10),
+  }));
+  wrap.appendChild(buildTimeCheckinGeneratorRow("cwd", "rowTimeCheckinGeneratorCwd", "rowTimeCheckinGeneratorCwdDesc"));
+  wrap.appendChild(buildTimeCheckinGeneratorRow("command", "rowTimeCheckinGeneratorCommand", "rowTimeCheckinGeneratorCommandDesc"));
+  wrap.appendChild(buildTimeCheckinGeneratorArgsRow());
+  wrap.appendChild(buildTimeCheckinGeneratorRow("timeoutMs", "rowTimeCheckinGeneratorTimeout", "rowTimeCheckinGeneratorTimeoutDesc", {
+    format: (value) => String(value || 30000),
+    parse: (value) => Number.parseInt(value, 10),
+  }));
+  wrap.appendChild(buildTimeCheckinStatusRow());
+  wrap.appendChild(buildTimeCheckinActionsRow());
+  section.appendChild(wrap);
+
+  // Advanced collapsed section
+  const advanced = document.createElement("details");
+  advanced.className = "settings-collapsed-section";
+  const summary = document.createElement("summary");
+  summary.className = "settings-collapsed-summary";
+  summary.textContent = t("sectionAdvancedHermes");
+  advanced.appendChild(summary);
+  const advancedContent = document.createElement("div");
+  advancedContent.className = "section-rows";
+  advancedContent.appendChild(buildHermesChatSectionInner());
+  advanced.appendChild(advancedContent);
+  section.appendChild(advanced);
+  return section;
+}
+
+function buildDiagnosticsSection() {
+  const details = document.createElement("details");
+  details.className = "settings-collapsed-section";
+  const summary = document.createElement("summary");
+  summary.className = "settings-collapsed-summary";
+  summary.textContent = t("sectionDiagnostics");
+  details.appendChild(summary);
+
+  const content = document.createElement("div");
+  content.className = "section-rows";
+  content.appendChild(buildTranslatorDiagnosticsRow());
+  content.appendChild(buildTerminalDiagnosticsRow());
+  content.appendChild(buildGlobalActivityDiagnosticsRow());
+  content.appendChild(buildTimeCheckinPreviewRow());
+  content.appendChild(buildProviderUsagePreviewRow());
+  details.appendChild(content);
+  return details;
+}
+
+function buildTimeCheckinPreviewRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowTimeCheckinGeneratorCommand"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowTimeCheckinGeneratorCommandDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.appendChild(buildActionButton("actionPreviewTimeCheckinContext", () => window.settingsAPI.previewTimeCheckinContext()));
+  row.appendChild(ctrl);
+  return row;
+}
+
+function buildProviderUsagePreviewRow() {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="row-text">` +
+      `<span class="row-label">${escapeHtml(t("rowProviderUsageHudEnabled"))}</span>` +
+      `<span class="row-desc">${escapeHtml(t("rowProviderUsageHudEnabledDesc"))}</span>` +
+    `</div>`;
+  const ctrl = document.createElement("div");
+  ctrl.className = "row-control";
+  ctrl.appendChild(buildActionButton("actionPreviewProviderUsageHud", () => window.settingsAPI.previewProviderUsageHud()));
+  row.appendChild(ctrl);
+  return row;
 }
 
 function buildAgentLauncherEnabledRow() {
@@ -2268,11 +2709,6 @@ function renderGeneralTab(parent) {
     buildMacTypingAwarenessRow(),
   ]));
 
-  parent.appendChild(buildSection(t("sectionTranslation"), [
-    buildTranslatorApiKeyRow(),
-    buildTranslatorStatusRow(),
-  ]));
-
   // Section: Startup
   const manageClaudeHooksEnabled = !!(snapshot && snapshot.manageClaudeHooksAutomatically);
   parent.appendChild(buildSection(t("sectionStartup"), [
@@ -2320,11 +2756,6 @@ function renderGeneralTab(parent) {
     }),
   ]));
 
-  parent.appendChild(buildSection(t("sectionDiagnostics"), [
-    buildTranslatorDiagnosticsRow(),
-    buildTerminalDiagnosticsRow(),
-  ]));
-
   parent.appendChild(buildSection(t("sectionGlobalActivity"), [
     buildGlobalActivityEnabledRow(),
     buildGlobalActivityStatusRow(),
@@ -2334,58 +2765,6 @@ function renderGeneralTab(parent) {
     buildGlobalRuleRow("mediaPlaybackReaction", "rowGlobalRuleMedia"),
     buildGlobalRuleRow("browserReadingReaction", "rowGlobalRuleBrowser"),
     buildGlobalActivityDiagnosticsRow(),
-  ]));
-
-  parent.appendChild(buildSection(t("sectionTimeCheckins"), [
-    buildSwitchRow({
-      key: "timeCheckinEnabled",
-      labelKey: "rowTimeCheckinEnabled",
-      descKey: "rowTimeCheckinEnabledDesc",
-    }),
-    buildTimeCheckinStaticRow("rowTimeCheckinSchedule", "rowTimeCheckinScheduleDesc"),
-    buildTimeCheckinTextRow({
-      key: "timeCheckinPreviewClipboardWindowMinutes",
-      labelKey: "rowTimeCheckinWindow",
-      descKey: "rowTimeCheckinWindowDesc",
-      format: (value) => String(value || 60),
-      parse: (value) => Number.parseInt(value, 10),
-    }),
-    buildTimeCheckinGeneratorRow("cwd", "rowTimeCheckinGeneratorCwd", "rowTimeCheckinGeneratorCwdDesc"),
-    buildTimeCheckinGeneratorRow("command", "rowTimeCheckinGeneratorCommand", "rowTimeCheckinGeneratorCommandDesc"),
-    buildTimeCheckinGeneratorArgsRow(),
-    buildTimeCheckinGeneratorRow("timeoutMs", "rowTimeCheckinGeneratorTimeout", "rowTimeCheckinGeneratorTimeoutDesc", {
-      format: (value) => String(value || 30000),
-      parse: (value) => Number.parseInt(value, 10),
-    }),
-    buildTimeCheckinStatusRow(),
-    buildTimeCheckinActionsRow(),
-  ]));
-
-  parent.appendChild(buildSection(t("sectionProviderUsage"), [
-    buildSwitchRow({
-      key: "providerUsageHudEnabled",
-      labelKey: "rowProviderUsageHudEnabled",
-      descKey: "rowProviderUsageHudEnabledDesc",
-    }),
-    buildSwitchRow({
-      key: "providerUsageRefreshEnabled",
-      labelKey: "rowProviderUsageRefreshEnabled",
-      descKey: "rowProviderUsageRefreshEnabledDesc",
-    }),
-    buildSwitchRow({
-      key: "providerUsageMiniMaxEnabled",
-      labelKey: "rowProviderUsageMiniMaxEnabled",
-      descKey: "rowProviderUsageMiniMaxEnabledDesc",
-    }),
-    buildTimeCheckinTextRow({
-      key: "providerUsageStaleAfterMinutes",
-      labelKey: "rowProviderUsageStaleAfter",
-      descKey: "rowProviderUsageStaleAfterDesc",
-      format: (value) => String(value || 30),
-      parse: (value) => Number.parseInt(value, 10),
-    }),
-    buildProviderUsageStatusRow(),
-    buildProviderUsageActionsRow(),
   ]));
 }
 

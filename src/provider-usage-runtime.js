@@ -1,6 +1,6 @@
 "use strict";
 
-const ALIGN_MINUTES = Object.freeze([5, 15, 25, 35, 45, 55]);
+const ALIGN_MINUTES = Object.freeze([0, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30, 33, 36, 39, 42, 45, 48, 51, 54, 57]);
 
 function computeNextRun(nowDate) {
   const next = new Date(nowDate.getTime());

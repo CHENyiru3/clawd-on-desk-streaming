@@ -142,6 +142,10 @@ html, body {
   background: linear-gradient(90deg, #8b8680, #6f6a64);
 }
 
+.provider-usage-window[data-status="ok"] .provider-usage-fill {
+  background: linear-gradient(90deg, #d6b493, #c29569);
+}
+
 .provider-usage-window[data-status="warning"] .provider-usage-fill {
   background: linear-gradient(90deg, #d6b493, #c29569);
 }

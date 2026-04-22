@@ -128,12 +128,58 @@ describe("updateRegistry pure-data validators", () => {
       args: ["--resume"],
       timeoutMs: 30000,
     }, deps).status, "error");
+    // Time check-in max is 120000 ms
     assert.strictEqual(updateRegistry.timeCheckinGenerator({
       cwd: "/Users/eric_yiru/Desktop/Home",
       command: "hermes",
       args: ["--resume", "abc"],
-      timeoutMs: 300000,
+      timeoutMs: 120001,
+    }, deps).status, "error");
+    assert.strictEqual(updateRegistry.timeCheckinGenerator({
+      cwd: "/Users/eric_yiru/Desktop/Home",
+      command: "hermes",
+      args: ["--resume", "abc"],
+      timeoutMs: 120000,
     }, deps).status, "ok");
+  });
+
+  it("hermesChat validator accepts a valid config", () => {
+    const deps = { snapshot: baseSnapshot };
+    const valid = {
+      command: "hermes",
+      args: ["chat", "-q"],
+      cwd: "/Users/eric_yiru/Desktop",
+      timeoutMs: 180000,
+    };
+    assert.strictEqual(updateRegistry.hermesChat(valid, deps).status, "ok");
+  });
+
+  it("hermesChat validator rejects malformed command", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.hermesChat({ command: "", args: [], cwd: "", timeoutMs: 10000 }, deps).status, "error");
+    assert.strictEqual(updateRegistry.hermesChat({ command: "  ", args: [], cwd: "", timeoutMs: 10000 }, deps).status, "error");
+    assert.strictEqual(updateRegistry.hermesChat({ command: null, args: [], cwd: "", timeoutMs: 10000 }, deps).status, "error");
+  });
+
+  it("hermesChat validator rejects malformed args", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.hermesChat({ command: "hermes", args: "not-an-array", cwd: "", timeoutMs: 10000 }, deps).status, "error");
+    assert.strictEqual(updateRegistry.hermesChat({ command: "hermes", args: [42], cwd: "", timeoutMs: 10000 }, deps).status, "error");
+  });
+
+  it("hermesChat validator rejects malformed cwd", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.hermesChat({ command: "hermes", args: [], cwd: 123, timeoutMs: 10000 }, deps).status, "error");
+  });
+
+  it("hermesChat validator rejects out-of-bounds timeout", () => {
+    const deps = { snapshot: baseSnapshot };
+    const base = { command: "hermes", args: [], cwd: "" };
+    assert.strictEqual(updateRegistry.hermesChat({ ...base, timeoutMs: 9999 }, deps).status, "error");
+    assert.strictEqual(updateRegistry.hermesChat({ ...base, timeoutMs: 10000 }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.hermesChat({ ...base, timeoutMs: 600000 }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.hermesChat({ ...base, timeoutMs: 600001 }, deps).status, "error");
+    assert.strictEqual(updateRegistry.hermesChat({ ...base, timeoutMs: NaN }, deps).status, "error");
   });
 
   it("object-form boolean fields validate via entry.validate", () => {

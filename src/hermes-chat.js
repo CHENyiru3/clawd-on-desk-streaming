@@ -27,7 +27,7 @@ function normalizeConfig(raw = {}) {
     command: typeof raw.command === "string" ? raw.command.trim() : "hermes",
     args: Array.isArray(raw.args) ? raw.args.filter((v) => typeof v === "string" && v) : [],
     cwd: typeof raw.cwd === "string" && raw.cwd.trim() ? raw.cwd.trim() : undefined,
-    timeoutMs: Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0 ? raw.timeoutMs : 180000,
+    timeoutMs: Number.isFinite(raw.timeoutMs) && raw.timeoutMs > 0 ? raw.timeoutMs : 300000,
   };
 }
 
@@ -91,6 +91,7 @@ function clearHistory() {
 //   config,         // { command, args, cwd, timeoutMs }
 //   onToken,        // (token: string, isFirst: bool, isLast: bool) => void
 //   onComplete,     // (ok: bool, message: string, code: string) => void
+//   ctx,            // { clawdServerPort: number } — for Hermes permission bridge env vars
 // }
 function sendMessage(options) {
   const {
@@ -98,6 +99,7 @@ function sendMessage(options) {
     config: rawConfig,
     onToken,
     onComplete,
+    ctx: bridgeCtx,
   } = options;
 
   const config = normalizeConfig(rawConfig);
@@ -115,6 +117,13 @@ function sendMessage(options) {
 
   const cwd = config.cwd;
   const timeoutMs = Math.max(config.timeoutMs, 30000);
+  const bridgeSessionId = bridgeCtx && bridgeCtx.hermesSessionId
+    ? String(bridgeCtx.hermesSessionId)
+    : String(Date.now());
+  const hooksPath = path.join(__dirname, "..", "hooks");
+  const pythonPath = process.env.PYTHONPATH
+    ? `${hooksPath}${path.delimiter}${process.env.PYTHONPATH}`
+    : hooksPath;
 
   let settled = false;
   let fullResponse = "";
@@ -156,8 +165,16 @@ function sendMessage(options) {
   const child = childProcess.spawn(command, args, {
     cwd,
     stdio: ["pipe", "pipe", "pipe"],
-    // Don't inherit env — keep Clawd's env clean
-    env: { ...process.env },
+    // Inject env vars for the Hermes permission bridge
+    // (hooks/hermes-permission-bridge.py, injected via PYTHONPATH).
+    env: {
+      ...process.env,
+      PYTHONPATH: pythonPath,
+      HERMES_PERMISSION_ENABLED: "1",
+      CLAWD_PERMISSION_URL: `http://127.0.0.1:${bridgeCtx && bridgeCtx.clawdServerPort ? bridgeCtx.clawdServerPort : 23333}/permission`,
+      HERMES_BRIDGE_SESSION_ID: bridgeSessionId,
+      HERMES_SESSION_KEY: bridgeSessionId,
+    },
   });
 
   child.stdout.on("data", (chunk) => {

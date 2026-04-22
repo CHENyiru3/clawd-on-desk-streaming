@@ -4,6 +4,8 @@
 <h1 align="center">Clawd on Desk</h1>
 <p align="center">
   <a href="README.zh-CN.md">中文版</a>
+  &nbsp;·&nbsp;
+  <strong>v0.5.10</strong>
 </p>
 <p align="center">
   <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge-flat.svg" alt="Mentioned in Awesome Claude Code"></a>
@@ -11,7 +13,27 @@
 
 A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, and sleeping when you're away. Ships with two built-in themes: **Clawd** (pixel crab) and **Calico** (三花猫), with full support for custom themes.
 
-> Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, and **opencode**.
+> Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, **opencode**, and **Hermes**.
+
+## What's New in v0.5.10
+
+### Hermes Chat — Now Built-In
+- Chat with Hermes directly from the pet panel on the left side of your screen
+- Drop files or folders onto the chat to attach them — paths are automatically inserted as context
+- Draggable panel position; double-click the titlebar to open or close it
+
+### Settings — Cleaner Layout
+- All AI controls moved into a single **AI Work** tab: Hermes chat, agent permissions, translation, MiniMax usage, and time check-ins are now in one place
+- Hermes chat command and timeout are configurable with validation to prevent accidental misconfiguration
+
+### Translation Bubble
+- The translate bubble now appears above the pet and adjusts itself automatically (it won't cover other windows or go off-screen)
+
+### MiniMax Usage Tracker
+- The usage panel now shows the correct time window for your MiniMax quota — fixed a bug where it was showing a wrong date range
+
+### Unit Tests
+- Core chat panel logic now has automated tests to catch regressions before releases
 
 ## Features
 
@@ -23,6 +45,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 - **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks) in `~/.cursor/hooks.json` (registered automatically when Clawd starts, or run `npm run install:cursor-hooks`)
 - **Kiro CLI** — command hooks injected into custom agent configs under `~/.kiro/agents/`, plus an auto-created `clawd` agent that is re-synced from Kiro's built-in `kiro_default` whenever Clawd starts, so you can opt into hooks with minimal behavior drift via `kiro-cli --agent clawd` or `/agent swap clawd` (registered automatically when Clawd starts, or run `npm run install:kiro-hooks`). State hooks have been verified on macOS.
 - **opencode** — [plugin integration](https://opencode.ai/docs/plugins) via `~/.config/opencode/opencode.json` (registered automatically when Clawd starts); zero-latency event streaming, permission bubbles with Allow/Always/Deny, and building animations when parallel subagents are spawned via the `task` tool
+- **Hermes** — opens a chat panel beside the pet; configure the CLI command under Settings → AI Work; dangerous commands show an in-chat permission card (Allow Once / Allow Session / Allow Always / Deny); session status (offline / busy / idle / error) shown in the panel titlebar and the right-side HUD; no modification to the Hermes package required
 - **Multi-agent coexistence** — run all agents simultaneously; Clawd tracks each session independently
 
 ### Animations & Interaction
