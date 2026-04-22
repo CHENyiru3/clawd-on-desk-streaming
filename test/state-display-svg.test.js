@@ -51,7 +51,7 @@ describe("display_svg session hints (updateSession path)", () => {
       "cursor",
       null,
       pid,
-      "cursor-agent",
+      "claude-code",
       null,
       false,
       "clawd-working-building.svg"
@@ -74,7 +74,7 @@ describe("display_svg session hints (updateSession path)", () => {
       "cursor",
       null,
       pid,
-      "cursor-agent",
+      "claude-code",
       null,
       false,
       "evil.svg"
@@ -106,7 +106,7 @@ describe("display_svg session hints (updateSession path)", () => {
       "cursor",
       null,
       pid,
-      "cursor-agent",
+      "claude-code",
       null,
       false,
       "clawd-working-thinking.svg"

@@ -17,6 +17,7 @@ contextBridge.exposeInMainWorld("chatAPI", {
   onBusy: (cb) => ipcRenderer.on("chat-busy", (_, { busy }) => cb(busy)),
   // Receive DND state
   onDnd: (cb) => ipcRenderer.on("chat-dnd", (_, { active }) => cb(active)),
+  onStatus: (cb) => ipcRenderer.on("chat-status", (_, { status }) => cb(status)),
   // Receive language change
   onLangChange: (cb) => ipcRenderer.on("chat-lang-change", (_, { lang }) => cb(lang)),
 });

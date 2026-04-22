@@ -12,8 +12,6 @@
 | **Gemini CLI：无权限气泡** | Gemini 在终端内处理工具审批。文件轮询无法拦截或展示审批请求。 |
 | **Gemini CLI：无法跳转终端** | Session JSON 不携带终端 PID，和 Codex 一样无法做终端聚焦。 |
 | **Gemini CLI：轮询延迟** | 约 1.5 秒轮询间隔，另加 4 秒延迟窗口用于批量处理工具完成信号，明显慢于 hook 驱动的 agent。 |
-| **Cursor Agent：无权限气泡** | Cursor 在 hook 的 stdout JSON 里处理权限，而不是走 HTTP 阻塞式审批，Clawd 无法接管这条审批链路。 |
-| **Cursor Agent：启动恢复能力有限** | 启动时不做进程检测，否则任意 Cursor 编辑器进程都可能误判为活跃会话。Clawd 会保持 idle，直到收到第一条 hook 事件。 |
 | **Kiro CLI：无法区分会话** | Kiro CLI stdin JSON 不含 session_id，所有 Kiro 会话会被合并为单个追踪会话。 |
 | **Kiro CLI：无 SessionEnd 事件** | Kiro CLI 没有 SessionEnd 事件，Clawd 无法检测 Kiro 会话结束。 |
 | **Kiro CLI：无 subagent 检测** | Kiro CLI 没有 subagent 事件，不会触发杂耍/指挥动画。 |

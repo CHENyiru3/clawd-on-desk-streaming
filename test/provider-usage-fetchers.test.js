@@ -6,7 +6,7 @@ const assert = require("node:assert");
 const { fetchProviderUsageSnapshots } = require("../src/provider-usage-fetchers");
 
 describe("provider-usage-fetchers", () => {
-  it("normalizes checker JSON for codex, cursor, and minimax into structured windows", async () => {
+  it("normalizes checker JSON for codex and minimax into structured windows", async () => {
     const calls = [];
     const result = await fetchProviderUsageSnapshots({
       config: { python: "python3", scriptPath: "/tmp/check_usage.py", timeoutMs: 30000, browser: "auto" },
@@ -29,11 +29,9 @@ describe("provider-usage-fetchers", () => {
       },
     });
 
-    assert.deepStrictEqual(calls, ["codex", "cursor", "minimax"]);
+    assert.deepStrictEqual(calls, ["codex", "minimax"]);
     assert.strictEqual(result.providers.codex.windows[0].label, "5h");
     assert.strictEqual(result.providers.codex.windows[0].remainingPercent, 80);
-    assert.strictEqual(result.providers.cursor.windows[0].label, "Auto");
-    assert.strictEqual(result.providers.cursor.windows[1].label, "API");
     assert.strictEqual(result.providers.minimax.windows[0].label, "5h");
     assert.strictEqual(result.providers.minimax.status, "ok");
   });
@@ -59,7 +57,7 @@ describe("provider-usage-fetchers", () => {
         },
       },
       execFileImpl(cmd, args, opts, cb) {
-        // MiniMax returns an error; codex/cursor return data
+        // MiniMax returns an error; codex returns data
         if (args[2] === "minimax") {
           cb(new Error("Playwright failed to launch."), "", "Playwright failed to launch.");
         } else {
@@ -76,5 +74,35 @@ describe("provider-usage-fetchers", () => {
     assert.strictEqual(result.providers.minimax.status, "stale");
     assert.strictEqual(result.providers.minimax.windows[0].status, "stale");
     assert.match(result.lastError, /failed/i);
+  });
+
+  it("skips MiniMax checker when MiniMax usage is disabled", async () => {
+    const calls = [];
+    const result = await fetchProviderUsageSnapshots({
+      config: {
+        python: "python3",
+        scriptPath: "/tmp/check_usage.py",
+        timeoutMs: 300000,
+        browser: "auto",
+        includeMiniMax: false,
+      },
+      now: () => 5678,
+      execFileImpl(cmd, args, opts, cb) {
+        calls.push(args[2]);
+        cb(null, JSON.stringify({
+          provider: args[2],
+          source: "auto",
+          windows: { primary: { used_percent: 20, remaining_percent: 80 } },
+          warnings: [],
+        }), "");
+      },
+    });
+
+    assert.deepStrictEqual(calls, ["codex"]);
+    assert.strictEqual(result.providers.codex.status, "ok");
+    assert.strictEqual(result.providers.minimax.status, "unavailable");
+    assert.strictEqual(result.providers.minimax.source, "disabled");
+    assert.strictEqual(result.lastError, null);
+    assert.strictEqual(result.lastResult, "ok");
   });
 });

@@ -84,21 +84,30 @@ describe("prefs.getDefaults", () => {
       cwd: "/Users/eric_yiru/Desktop/Home",
       command: "hermes",
       args: ["--resume", "20260417_140020_0b84f5"],
-      timeoutMs: 30000,
+      timeoutMs: 120000,
     });
     assert.strictEqual(d.timeCheckinLastRunAt, null);
   });
 
+  it("seeds provider usage checker for long-running MiniMax checks", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(d.providerUsageChecker.python, "python3");
+    assert.match(d.providerUsageChecker.scriptPath, /check_usage\.py$/);
+    assert.strictEqual(d.providerUsageChecker.timeoutMs, 300000);
+    assert.strictEqual(d.providerUsageChecker.browser, "auto");
+    assert.strictEqual(d.providerUsageMiniMaxEnabled, true);
+  });
+
   it("seeds all known agents as enabled", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "opencode"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "gemini-cli", "codebuddy", "kiro-cli", "opencode"]) {
       assert.strictEqual(d.agents[id].enabled, true, `${id} should default enabled`);
     }
   });
 
   it("seeds all known agents with permissionsEnabled=true", () => {
     const d = prefs.getDefaults();
-    for (const id of ["claude-code", "codex", "copilot-cli", "cursor-agent", "gemini-cli", "codebuddy", "kiro-cli", "opencode"]) {
+    for (const id of ["claude-code", "codex", "copilot-cli", "gemini-cli", "codebuddy", "kiro-cli", "opencode"]) {
       assert.strictEqual(
         d.agents[id].permissionsEnabled,
         true,
@@ -188,6 +197,23 @@ describe("prefs.validate", () => {
       timeoutMs: 120000,
     });
     assert.strictEqual(v.timeCheckinLastRunAt, 1234);
+  });
+
+  it("normalizes provider usage checker timeout up to five minutes", () => {
+    const v = prefs.validate({
+      providerUsageChecker: {
+        python: " python3 ",
+        scriptPath: " /tmp/check_usage.py ",
+        timeoutMs: 999999,
+        browser: "firefox",
+      },
+    });
+    assert.deepStrictEqual(v.providerUsageChecker, {
+      python: "python3",
+      scriptPath: "/tmp/check_usage.py",
+      timeoutMs: 300000,
+      browser: "firefox",
+    });
   });
 
   it("normalizes globalActivityRules and drops malformed entries", () => {

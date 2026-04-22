@@ -28,11 +28,6 @@ describe("provider-usage-summary-fallback", () => {
           status: "critical",
           windows: [{ label: "5h", remainingPercent: 10, status: "critical" }],
         },
-        cursor: {
-          fetchedAt: Date.now(),
-          status: "ok",
-          windows: [{ label: "Auto", remainingPercent: 88, status: "ok" }],
-        },
       },
     });
     assert.strictEqual(summary.overallStatus, "tight");

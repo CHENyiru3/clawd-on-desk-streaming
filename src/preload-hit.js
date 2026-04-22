@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld("hitAPI", {
   showContextMenu: () => ipcRenderer.send("show-context-menu"),
   focusTerminal: () => ipcRenderer.send("focus-terminal"),
   openAgentCli: () => ipcRenderer.send("open-agent-cli"),
+  openChatPanel: () => ipcRenderer.send("open-chat-panel"),
   exitMiniMode: () => ipcRenderer.send("exit-mini-mode"),
   showSessionMenu: () => ipcRenderer.send("show-session-menu"),
   // Reaction triggers → main → renderWin

@@ -60,24 +60,29 @@ async function fetchProviderUsageSnapshots(options = {}) {
   const now = typeof options.now === "function" ? options.now() : Date.now();
   const execFileImpl = options.execFileImpl || childProcess.execFile;
   const previousSnapshot = options.previousSnapshot || null;
+  const includeMiniMax = config.includeMiniMax !== false;
 
   const [codexResult, minimaxResult] = await Promise.all([
     runChecker(config, "codex", execFileImpl),
-    runChecker(config, "minimax", execFileImpl),
+    includeMiniMax
+      ? runChecker(config, "minimax", execFileImpl)
+      : Promise.resolve({ ok: false, skipped: true, error: null }),
   ]);
 
-  const providers = {
-    codex: codexResult.ok
-      ? normalizeUsageSnapshot("codex", codexResult.data, now)
-      : buildProviderError("codex", codexResult.error, now),
-    minimax: minimaxResult.ok
-      ? normalizeUsageSnapshot("minimax", minimaxResult.data, now)
-      : buildProviderError("minimax", minimaxResult.error, now),
-  };
+  const codex = codexResult.ok
+    ? normalizeUsageSnapshot("codex", codexResult.data, now)
+    : buildProviderError("codex", codexResult.error, now);
+  const minimax = minimaxResult.ok
+    ? normalizeUsageSnapshot("minimax", minimaxResult.data, now)
+    : minimaxResult.skipped
+      ? createEmptyProviderGroup("minimax", { fetchedAt: now, source: "disabled" })
+      : buildProviderError("minimax", minimaxResult.error, now);
+
+  const providers = { codex, minimax };
 
   let miniMaxError = null;
   const previousMiniMax = previousSnapshot && previousSnapshot.providers ? previousSnapshot.providers.minimax : null;
-  if (!providerGroupHasUsableData(providers.minimax) && providerGroupHasUsableData(previousMiniMax)) {
+  if (includeMiniMax && !providerGroupHasUsableData(providers.minimax) && providerGroupHasUsableData(previousMiniMax)) {
     miniMaxError = providers.minimax && providers.minimax.error
       ? providers.minimax.error
       : "MiniMax usage refresh failed; showing last known data.";
@@ -86,7 +91,10 @@ async function fetchProviderUsageSnapshots(options = {}) {
     miniMaxError = providers.minimax.error;
   }
 
-  const statuses = Object.values(providers).map((group) => group && group.status);
+  const statuses = [
+    providers.codex && providers.codex.status,
+    ...(includeMiniMax ? [providers.minimax && providers.minimax.status] : []),
+  ];
   return {
     fetchedAt: now,
     providers,

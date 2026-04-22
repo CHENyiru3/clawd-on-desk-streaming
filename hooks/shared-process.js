@@ -1,5 +1,5 @@
 // hooks/shared-process.js — Shared process tree walk, stdin reader, platform config (macOS only)
-// Used by hook scripts (clawd, copilot, cursor, gemini, kiro, codebuddy).
+// Used by hook scripts (clawd, copilot, gemini, kiro, codebuddy).
 // Zero third-party dependencies — only Node built-ins.
 
 // ── Base platform constants (macOS) ───────────────────────────────────────────
@@ -11,11 +11,10 @@ const BASE_TERMINAL_NAMES = [
 
 const SYSTEM_BOUNDARY = new Set(["launchd", "init", "systemd"]);
 
-const BASE_EDITOR_MAP = { "code": "code", "cursor": "cursor" };
+const BASE_EDITOR_MAP = { "code": "code" };
 
 const DEFAULT_EDITOR_PATH_CHECKS = [
   ["visual studio code", "code"],
-  ["cursor.app", "cursor"],
 ];
 
 // ── getPlatformConfig ────────────────────────────────────────────────────────
@@ -81,6 +80,7 @@ function createPidResolver(options) {
     const pidChain = [];
 
     for (let i = 0; i < maxDepth; i++) {
+      pidChain.push(pid);
       let name, parentPid;
       try {
         const ppidOut = execFileSync("ps", ["-o", "ppid=", "-p", String(pid)], { encoding: "utf8", timeout: 1000 }).trim();
@@ -95,7 +95,6 @@ function createPidResolver(options) {
         parentPid = parseInt(ppidOut, 10);
       } catch { break; }
 
-      pidChain.push(pid);
       if (!detectedEditor && editorMap[name]) detectedEditor = editorMap[name];
 
       // Agent process detection

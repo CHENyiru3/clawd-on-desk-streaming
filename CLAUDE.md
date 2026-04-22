@@ -1,557 +1,192 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## 项目概述
-
-Clawd 桌宠 — 一个 Electron 桌面宠物，通过 hook 系统和日志轮询实时感知 AI coding agent 的工作状态并播放对应的像素风动画（SVG / APNG / GIF / PNG 等）。支持 **Claude Code**（command + HTTP hook）、**Codex CLI**（JSONL 日志轮询）、**Copilot CLI**（command hook）、**Cursor Agent**（`~/.cursor/hooks.json`，stdin JSON + stdout JSON）、**Gemini CLI**（session JSON 轮询）、**Kiro CLI**（per-agent `~/.kiro/agents/*.json`）、**CodeBuddy**（Claude Code-兼容 hook）、**opencode**（in-process plugin + 反向 HTTP bridge）并行运行。内置两套主题 **Clawd**（像素螃蟹）与 **Calico**（三花猫），并支持用户自定义主题。支持 Windows、macOS 和 Linux，UI 双语（en / zh）。
-
-## 常用命令
-
-```bash
-npm start              # 启动 Electron 应用（开发模式）
-npm run build          # electron-builder 打包 macOS DMG（x64 + arm64，对应 package.json "build" 脚本）
-npm run build:mac      # 同上，macOS DMG
-npm run build:linux    # electron-builder 打包 Linux AppImage + deb
-npm run build:all      # 同时打包 Windows + macOS + Linux
-npm install            # 安装依赖（electron + electron-builder）
-npm test               # 运行单元测试（node --test test/*.test.js）
-npm run install:claude-hooks   # 手动注册 Claude Code hooks 到 ~/.claude/settings.json
-npm run uninstall:claude-hooks # 移除 Claude Code hooks
-npm run install:cursor-hooks    # 注册 Cursor Agent hooks 到 ~/.cursor/hooks.json
-npm run install:gemini-hooks    # 注册 Gemini CLI hooks 到 ~/.gemini/settings.json
-npm run install:kiro-hooks      # 注入 Clawd hooks 到 ~/.kiro/agents/*.json（含维护 clawd agent）
-npm run install:codebuddy-hooks # 注册 CodeBuddy hooks 到 ~/.codebuddy/settings.json
-npm run create-theme           # 脚手架生成新主题（用户 themes 目录下），见 docs/guide-theme-creation.md
-```
-
-> **注意**：`npm run build` 对应 `package.json` 中的 `"build": "electron-builder --mac"` 脚本，构建 macOS DMG（而非 CLAUDE.md 早期版本的 Windows NSIS）。Windows NSIS 打包请用 electron-builder CLI 直接调用或配置对应的 npm script。
-
-手动测试状态切换：
-```bash
-curl -X POST http://127.0.0.1:23333/state \
-  -H "Content-Type: application/json" \
-  -d '{"state":"working","svg":"clawd-working-building.svg"}'
-```
-
-Shell 测试脚本（仅开发用，不随仓库分发）：
-```bash
-bash test-demo.sh [秒] # 逐个播放所有 SVG 动画（默认每个 8 秒）
-bash test-mini.sh [秒] # 逐个播放极简模式 SVG 动画（默认每个 6 秒）
-bash test-sleep.sh     # 缩短睡眠超时快速测试睡眠序列
-bash test-bubble.sh    # 发送模拟权限请求测试气泡堆叠
-bash test-macos.sh     # macOS 适配测试（需先 npm start）
-bash test-oneshot-gate.sh [state] [秒] # 测 Animation Map 的 5 个 ONESHOT disable 开关（error/notification/sweeping/attention/carrying），省略 state 则全测
-```
-
-单元测试覆盖 agents/、hook 注册和端口发现逻辑、以及新增的各个子系统模块。使用 Node.js 内置 test runner（`node --test`），运行 `npm test` 执行全套，或 `node --test test/theme-loader.test.js` 单文件运行。
-
-覆盖范围（test/*.test.js）：registry、codex-log-monitor、gemini-log-monitor、gemini-install、install、server-config、menu-autostart、agent-gate、agent-launcher、agents、animation-cycle、clipboard-history、clipboard-sanitizer、codebuddy-install、codex-notify-subgate、create-theme、cursor-install、elicitation、focus、global-rules、hermes-checkin、hermes-checkin-cleaner、hit-geometry、i18n、json-utils、kiro-install、log-rotate、opencode-install、permission-reposition、prefs、provider-usage-fetchers、provider-usage-layout、provider-usage-runtime、provider-usage-summary-fallback、server-hook-management、server-permission-subgate、settings-actions、settings-controller、settings-store、shared-process、size-utils、startup-window-state、state-display-svg、terminal-diagnostics、theme-loader、theme-override、tick、time-checkin、time-checkin-bubble、translate、translate-bubble-timer、update-bubble-position、update-bubble-style、updater、work-area、remote-deploy、clipboard-context-summary。
-
-Electron 主进程（状态机、窗口、托盘）无自动化测试，依赖手动 + shell 脚本验证。
-
-## 架构与数据流
-
-```
-Claude Code 状态同步（command hook，非阻塞）：
-  Claude Code 触发事件
-    → hooks/clawd-hook.js（零依赖 Node 脚本，stdin 读 JSON 取 session_id + source_pid）
-    → HTTP POST 127.0.0.1:23333/state { state, session_id, event, source_pid, cwd }
-    → src/server.js 路由 → src/state.js 状态机（多会话追踪 + 优先级 + 最小显示时长 + 睡眠序列）
-    → IPC state-change 事件
-    → src/renderer.js（<object> SVG 预加载 + 淡入切换 + 眼球追踪）
-
-Copilot CLI 状态同步（command hook，非阻塞）：
-  Copilot 触发事件
-    → hooks/copilot-hook.js（camelCase 事件名 → agents/copilot-cli.js 映射 → HTTP POST）
-    → 同上状态机
-
-Cursor Agent 状态同步（command hook，stdin JSON，非阻塞）：
-  Cursor IDE 触发事件
-    → hooks/cursor-hook.js（hook_event_name → 映射为 PascalCase event + HTTP POST，stdout 返回 allow/continue 以满足 preToolUse 等 hook）
-    → 同上状态机（agent_id: cursor-agent）
-
-Codex CLI 状态同步（JSONL 日志轮询，~1.5s 延迟）：
-  Codex 写入 ~/.codex/sessions/YYYY/MM/DD/rollout-*.jsonl
-    → agents/codex-log-monitor.js（增量读取，事件类型 → agents/codex.js 映射）
-    → 同上状态机
-
-Gemini CLI 状态同步（session JSON 轮询，~1.5s 延迟 + 4s 完成延迟窗口）：
-  Gemini 写入 ~/.gemini/tmp/<project>/chats/session-*.json
-    → agents/gemini-log-monitor.js（轮询 JSON，diff 消息数组检测工具调用/完成）
-    → 同上状态机（agent_id: gemini-cli）
-
-Kiro CLI 状态同步（per-agent hook，stdin JSON）：
-  Kiro CLI 触发事件
-    → hooks/kiro-hook.js（camelCase 事件 → agents/kiro-cli.js 映射 → HTTP POST）
-    → 同上状态机（agent_id: kiro-cli）
-  注意：Kiro 无 global hooks，hooks/kiro-install.js 把 hook 注入到 ~/.kiro/agents/ 下每个
-  custom agent 配置里，并额外维护一个 "clawd" agent（继承 kiro_default，启动时从 kiro_default
-  重新同步以避免行为漂移）。内置 kiro_default 没有可编辑 JSON，用户需 `kiro-cli --agent clawd`
-  或 `/agent swap clawd` 才能启用 hooks。
-
-CodeBuddy 状态同步（Claude Code 兼容 hook，command）：
-  CodeBuddy 触发事件
-    → hooks/codebuddy-hook.js（PascalCase 事件 → agents/codebuddy.js 映射 → HTTP POST）
-    → 同上状态机（agent_id: codebuddy）
-  Hook 注册到 ~/.codebuddy/settings.json，格式与 Claude Code 完全兼容。
-
-opencode 状态同步（in-process plugin，~0ms 延迟）：
-  opencode 触发事件（session.created / session.status / message.part.updated 等）
-    → hooks/opencode-plugin/index.mjs（Bun 运行时，插件跑在 opencode.exe 进程内）
-    → translateEvent 映射（opencode v2 事件名 → PascalCase Clawd event 名）
-    → fire-and-forget HTTP POST 127.0.0.1:23333/state
-    → 同上状态机（agent_id: opencode）
-
-opencode 权限气泡（event hook + 反向 bridge，非阻塞）：
-  opencode 请求权限 → event hook 收到 permission.asked
-    → plugin POST /permission（带 bridge_url + bridge_token）→ Clawd 立即 200 ACK（不挂连接）
-    → Clawd 创建 bubble 窗口 → 用户 Allow/Always/Deny
-    → Clawd POST plugin 的反向 bridge → bridge 用 ctx.client._client.post() 调 opencode 内置 Hono 路由 /permission/:id/reply
-    → opencode 执行对应行为（once/always/reject）
-
-远程 SSH 状态同步（反向端口转发）：
-  远程服务器上的 Claude Code / Codex CLI
-    → hooks 通过 SSH 隧道 POST 到本地 127.0.0.1:23333
-    → 同上状态机（CLAWD_REMOTE=1 模式跳过 PID 收集）
-
-权限决策流（Claude Code HTTP hook，阻塞）：
-  Claude Code PermissionRequest
-    → HTTP POST 127.0.0.1:23333/permission { tool_name, tool_input, session_id, permission_suggestions }
-    → main.js 创建 bubble 窗口（bubble.html）显示权限卡片
-    → 用户点击 Allow / Deny / suggestion → HTTP 响应 { behavior }
-    → Claude Code 执行对应行为
-```
-
-### 双窗口架构（输入/渲染分离）
-
-桌宠使用两个独立的顶层窗口：
-- **渲染窗口（win）**：透明大窗口，永久 `setIgnoreMouseEvents(true)`（click-through），只负责显示 SVG 动画和眼球追踪
-- **输入窗口（hitWin）**：小矩形窗口，`transparent: true` + `setShape` 覆盖 hitbox 区域，`focusable: true`，永久 `setIgnoreMouseEvents(false)`，接收所有 pointer 事件
-
-输入事件流：hitWin renderer → IPC → main（移动两个窗口 + relay）→ renderWin renderer（播放反应动画）
-
-这个架构解决了 Windows 上的拖拽失效 bug：`WS_EX_NOACTIVATE`（`setFocusable(false)`）+ layered window + Chromium child HWND 的组合，在 z-order 变化后会导致 click 走 WM_MOUSEACTIVATE 激活死路径。分离后输入窗口 `focusable: true` 避免了这个问题。
-
-### 多 Agent 架构（agents/）
-
-每个 agent 定义为一个配置模块，导出事件映射、进程名、能力声明（`capabilities` 含 `httpHook / permissionApproval / sessionEnd / subagent / interactiveBubble`）：
-
-| Agent | httpHook | permissionApproval | sessionEnd | subagent | interactiveBubble |
-|-------|----------|-------------------|-----------|----------|-------------------|
-| Claude Code | ✓ | ✓ | ✓ | ✓ | — |
-| Codex CLI | — | — | ✓ | ✓ | ✓（Dismiss only） |
-| Copilot CLI | — | — | ✓ | ✓ | — |
-| Cursor Agent | — | — | ✓ | ✓ | — |
-| Gemini CLI | — | — | ✓ | — | — |
-| Kiro CLI | — | — | — | — | — |
-| CodeBuddy | ✓ | ✓ | ✓ | — | — |
-| opencode | ✓（plugin） | ✓ | ✓ | ✓ | — |
-
-- `agents/claude-code.js` — Claude Code 事件映射 + 能力（hooks、permission、terminal focus）
-- `agents/codex.js` — Codex CLI JSONL 事件映射 + 轮询配置
-- `agents/copilot-cli.js` — Copilot CLI camelCase 事件映射
-- `agents/cursor-agent.js` — Cursor Agent（hooks.json）事件映射
-- `agents/gemini-cli.js` — Gemini CLI 事件映射 + JSON 轮询配置
-- `agents/kiro-cli.js` — Kiro CLI 事件映射（camelCase），无 HTTP hook / 无权限 / 无 subagent
-- `agents/codebuddy.js` — CodeBuddy 事件映射（PascalCase，Claude Code 兼容），支持权限
-- `agents/opencode.js` — opencode 事件映射 + 能力（plugin、permission、terminal focus）
-- `agents/registry.js` — agent 注册表：按 ID 或进程名查找 agent 配置
-- `agents/codex-log-monitor.js` — Codex JSONL 增量轮询器（文件监视 + 增量读取 + 事件去重）
-- `agents/gemini-log-monitor.js` — Gemini session JSON 轮询器（消息数组 diff + 4s 完成延迟窗口）
-
-运行时的 agent 启停 / 权限气泡开关通过 `src/agent-gate.js` 读 `prefs.agents[id].enabled` / `.permissionsEnabled`（默认 true，snapshot 缺字段时也 true 以兼容旧版），供 state.js 和 server.js 判断是否处理该 agent 的事件。
-
-### 核心文件
-
-| 文件 | 职责 |
-|------|------|
-| `src/main.js` | Electron 主进程胶水：窗口创建、ipcMain 分发、ctx 组装、app 生命周期、屏幕工具、HWND 恢复 |
-| `src/prefs.js` | 纯数据层：`clawd-prefs.json` 的 schema / load / save / migrate / validate，零 Electron 依赖；`SCHEMA` 定义版本化字段 |
-| `src/settings-store.js` | 不可变 snapshot + subscribers，closure-private `_commit`（外部拿不到 mutator） |
-| `src/settings-controller.js` | 设置系统**唯一写入者**：组合 prefs + store + actions；`applyUpdate` / `applyBulk` / `applyCommand` / `hydrate` / `subscribe`；pre-commit effect gate（validate → effect → commit，effect 失败不提交）|
-| `src/settings-actions.js` | updateRegistry + commands：每个字段的 validate/effect 对，以及 `removeTheme`/`installHooks` 等命令 |
-| `src/settings-renderer.js` | 设置窗口渲染进程（2k+ 行）：主题卡片、animation overrides、agent 面板、诊断 |
-| `src/preload-settings.js` | 设置窗口 contextBridge：读 snapshot、发 update/command、订阅变更 |
-| `src/preload-prompt.js` | 轻量提示子窗口（elicitation / 更新气泡等）preload |
-| `src/theme-loader.js` | 主题运行时（~1400 行）：加载 `theme.json`、必需状态校验、变体 merge、能力感知 overrides、SVG 白名单消毒、用户主题目录发现 |
-| `src/agent-gate.js` | 纯函数 gate：`isAgentEnabled(snapshot, id)` / `isAgentPermissionsEnabled(...)`，默认 true 兼容旧 prefs |
-| `src/animation-cycle.js` | 解析 SVG/APNG 的动画周期（精确 / 估算 / static / unavailable），供渲染循环与抖动检测使用 |
-| `src/i18n.js` | 多语言字符串表（en / zh），菜单与气泡按钮共享 |
-| `src/state.js` | 状态机核心：setState/applyState、多会话追踪、resolveDisplayState、DND、wake poll、进程存活检测、session submenu |
-| `src/server.js` | HTTP 服务：/state（GET 健康检查 + POST 状态更新）、/permission（权限 hook）、端口发现、hook 注册 |
-| `src/permission.js` | 权限气泡：BrowserWindow 创建/堆叠/销毁、allow/deny/suggestion 决策、PASSTHROUGH_TOOLS |
-| `src/updater.js` | 自动更新：electron-updater 懒加载、GitHub API 版本检查、更新对话框、菜单状态标签 |
-| `src/update-bubble.js` + `update-bubble.html` | 自定义更新提示气泡（替代原生对话框），与 `preload-update-bubble.js` 配对 |
-| `src/focus.js` | 终端聚焦：持久 PowerShell 进程 + C# FFI（Windows）、osascript 序列化（macOS）、VS Code tab 聚焦 |
-| `src/mini.js` | 极简模式：边缘吸附、螃蟹步入场、抛物线跳跃、peek hover、窗口滑动动画 |
-| `src/menu.js` | 菜单系统：i18n（en / zh）、右键菜单、系统托盘、contextMenuOwner、语言切换、窗口缩放 |
-| `src/tick.js` | 主循环（50ms）：光标轮询、mouseOverPet 计算、mini peek、idle→sleep 序列、眼球位置计算 + dedup |
-| `src/renderer.js` | 渲染进程（纯 view）：动画切换（预加载防闪烁）、眼球 DOM 挂接、接收 IPC 触发的反应动画 |
-| `src/hit.html` / `hit-renderer.js` / `hit-geometry.js` / `preload-hit.js` | 输入窗口：setShape 小矩形、pointer capture 拖拽、多击反应、hitbox 几何计算 |
-| `src/preload.js` | 渲染窗口 contextBridge（onStateChange、onEyeMove、reaction 接收、pauseCursorPolling） |
-| `src/bubble.html` + `preload-bubble.js` | 权限气泡 UI + contextBridge（permission-show、permission-decide、bubble-height、elicitation 输入） |
-| `src/mac-window.js` | macOS 专用窗口行为（alwaysOnTop 恢复、space 行为等） |
-| `src/login-item.js` | 开机自启：封装 `app.getLoginItemSettings` / `setLoginItemSettings`，供 controller 做 validate/effect |
-| `src/work-area.js` + `size-utils.js` | 多显示器工作区查询 / 窗口尺寸钳制工具 |
-| `src/log-rotate.js` | 1MB 循环追加日志工具：超限时从文件中点的换行处切半保留新内容 |
-| `src/agent-launcher.js` | 三击/聚焦触发 agent CLI 启动：命令校验（256char、禁止字符）、cwd 解析（`..` 穿越保护）、macOS 自动前台授权 |
-| `src/global-rules.js` | 全局规则引擎：整合 clipboard / notification / media / browser 事件到状态机，含 autoReturn 定时器；`RULE_STATE_MAP`（carrying/listening/reading/notification）、`RULE_PRIORITY` |
-| `src/clipboard-history.js` | 剪切板历史：in-memory ring buffer + maxAgeMs 过期修剪；依赖 `clipboard-sanitizer` 做隐私过滤 |
-| `src/clipboard-sanitizer.js` | 隐私过滤：`SECRET_LABEL_PATTERNS`（password/token/account）+ `DIRECT_PATTERNS`（email/phone/JWT/github_pat/minimax key 等）；返回 `{ text, redacted, redactionCount }` |
-| `src/clipboard-context-summary.js` | LLM 总结剪切板上下文（依赖 Hermes/MiniMax API），用于 `carrying` 状态气泡 |
-| `src/hermes-checkin.js` | 时间打卡气泡：按工作时间槽（morning/midday/afternoon/evening/late-night）触发打卡提示；调用 Hermes LLM 生成打卡文案 |
-| `src/hermes-command.js` | Hermes LLM 调用封装：MiniMax API proxy（`MINIMAX_BASE_URL` = `https://api.minimaxi.com/anthropic`），`buildPromptInvocation` 组装 prompt |
-| `src/hermes-checkin-cleaner.js` | 清洗 Hermes 输出：移除 markdown code block、反引号、多余空行 |
-| `src/translate.js` | 翻译气泡：调用 MiniMax API（`MINIMAX_API_KEY` env var）翻译文本；支持中↔英双语气泡显示 |
-| `src/translate-bubble-timer.js` | 翻译气泡生命周期管理：自动消失计时器 |
-| `src/provider-usage-fetchers.js` | provider usage 数据获取入口：并行调用 Python checker 脚本（codex + minimax），`normalizeUsageSnapshot` 标准化输出，`buildProviderError` 构造错误兜底 |
-| `src/provider-usage-model.js` | 数据模型：`normalizeUsageSnapshot` / `createEmptyProviderGroup` / `providerGroupHasUsableData` / `markProviderGroupStale`；`PROVIDER_WINDOW_MAP` 定义各 provider 的 usage window 映射 |
-| `src/provider-usage-runtime.js` | usage 检查定时器：aligned to 5-min 边界（05/15/25/35/45/55），`shouldDefer` hook 防止与 mini 模式冲突；`onUsageUpdate` 回调推送气泡 UI |
-| `src/provider-usage-layout.js` | usage 气泡布局：按 provider 分栏渲染，`<=50%` warning / `<20%` critical 颜色；支持 `detailText` / `resetText` 自定义行 |
-| `src/provider-usage-summary-fallback.js` | 无 LLM 兜底汇总：`buildFallbackSummary()` 用纯阈值逻辑（剩余 <20%=critical，<50%=warning）生成 summaryText |
-| `src/macos-browser-activity.js` | macOS 浏览器识别：`BROWSER_BUNDLE_IDS`（Safari/Chrome/Brave/Edge/Firefox） |
-| `src/macos-clipboard-monitor.js` | macOS 剪切板轮询：定时读取 NSPasteboard，过滤静默重复内容 |
-| `src/macos-frontmost-app-monitor.js` | macOS 前台 app 监控：检测 agent 编辑器（Claude Code / Cursor / VS Code）是否在运行 |
-| `src/macos-input-monitor.js` | macOS 输入监控：键盘活跃度检测（idle/active） |
-| `src/macos-media-monitor.js` | macOS 媒体播放监控：检测音频/视频 app 活跃状态 |
-| `src/macos-notification-monitor.js` | macOS 通知监控：接收 `notificationPosted` 事件，过滤 agent 相关通知 |
-| `src/startup-window-state.js` | 启动时窗口位置/尺寸恢复：从 prefs 读取 + clampToScreen |
-| `src/terminal-diagnostics.js` | 终端诊断：汇总 agent 运行状态、hook 注册情况、provider usage 摘要 |
-| `hooks/clawd-hook.js` | Claude Code command hook：事件名 → 状态映射 → HTTP POST，零依赖 |
-| `hooks/copilot-hook.js` | Copilot CLI command hook：camelCase 事件名，与 clawd-hook.js 相同架构 |
-| `hooks/gemini-hook.js` + `gemini-install.js` | Gemini CLI hook + 安全注册到 ~/.gemini/settings.json，导出 `registerGeminiHooks()` |
-| `hooks/cursor-hook.js` + `cursor-install.js` | Cursor Agent hook（stdin/stdout JSON，支持 display_svg 工具提示）+ 注册到 ~/.cursor/hooks.json（append-only 幂等）|
-| `hooks/kiro-hook.js` + `kiro-install.js` | Kiro CLI hook（camelCase）+ per-agent 注入（遍历 ~/.kiro/agents/*.json），额外维护 `clawd` agent（启动时从 `kiro_default` 重新同步行为） |
-| `hooks/codebuddy-hook.js` + `codebuddy-install.js` | CodeBuddy hook（Claude Code 兼容 PascalCase）+ 注册到 ~/.codebuddy/settings.json |
-| `hooks/opencode-plugin/index.mjs` + `opencode-install.js` | opencode in-process plugin（Bun runtime）+ 注册到 ~/.config/opencode/opencode.json（打包时 asar → asar.unpacked） |
-| `hooks/install.js` + `uninstall.js` | Claude Code hooks 的安全注册 / 卸载（逐事件追加不覆盖）；`registerHooks()` 在 main.js 启动时自动调用 |
-| `hooks/shared-process.js` | hook 脚本共享的进程树遍历 + stdin JSON 读取 + 终端 / 编辑器进程名白名单 + 系统边界常量，**所有 hook 脚本复用** |
-| `hooks/json-utils.js` | 原子写 JSON（`writeJsonAtomic`）+ 从现有 hook command 提取 node bin 路径（`extractExistingNodeBin`） |
-| `hooks/auto-start.js` | SessionStart hook：检测 Electron 是否在运行，未运行则 detached 启动，<500ms 退出 |
-| `hooks/server-config.js` | 共享工具：端口常量、运行时配置读写、HTTP helper、服务发现 |
-| `hooks/codex-remote-monitor.js` | 远程 Codex 监控：独立守护进程，通过 SSH 隧道轮询 JSONL 日志并 POST 状态变更 |
-| `scripts/create-theme.js` / `validate-theme.js` | 主题脚手架 CLI + 校验器（`npm run create-theme`） |
-| `launch.js` | 启动器：清除 `ELECTRON_RUN_AS_NODE` 环境变量后 spawn Electron |
-| `extensions/vscode/` | VS Code 扩展（clawd-terminal-focus）：通过 `onUri` 协议聚焦正确的终端 tab |
-| `tools/png2svg.py` | PNG 转 SVG 工具（Python Pillow）|
-| `tools/calico-test.html` | 主题预览用 HTML（standalone，无 Electron 依赖）|
-
-### IPC 通道（main ↔ renderer）
-
-**Renderer → Main**（`ipcRenderer.send`）：
-- `show-context-menu` — 右键菜单
-- `move-window-by(dx, dy)` — 相对移动窗口
-- `drag-end` — 拖拽结束
-- `play-click-reaction(svg, duration)` — 点击反应动画
-- `pause-cursor-polling` / `resume-from-reaction` — 暂停/恢复眼球追踪
-- `focus-terminal` / `open-agent-cli` / `exit-mini-mode` / `show-session-menu` — 菜单操作
-- `start-drag-reaction` / `end-drag-reaction` — 拖拽反应
-- `proportional-custom(value)` — elicitation 输入提交（prompt 子窗口）
-
-**Main → Renderer**（`webContents.send`）：
-- `state-change` — 状态切换（`{ state, svg }`）
-- `eye-move({ dx, dy })` — 眼球偏移
-- `reaction(svg, duration)` — 反应动画播放
-- `theme-config` — 主题配置同步到 hitWin
-- `permission-show` — 权限气泡数据
-- `bubble-height` — 气泡高度上报（用于堆叠计算）
-- `hit-state-sync` / `hit-cancel-reaction` — hitWin → renderWin relay
-- `update-bubble-show/hide` — 更新气泡
-- `translate-show` — 翻译气泡
-- `time-checkin-bubble-show/hide` — 打卡气泡
-- `settings-changed` — 设置变更广播（settings store subscriber 触发）
-
-**Settings 窗口**（`ipcRenderer.invoke` → `ipcMain.handle`）：
-- `settings:get-snapshot` / `settings:update(key, value)` / `settings:command(action, payload)`
-- `settings:get-animation-overrides-data` / `settings:preview-animation-override`
-- `settings:list-themes` / `settings:confirm-remove-theme`
-- `settings:list-agents` / `settings:confirm-disable-claude-hooks` / `settings:confirm-disconnect-claude-hooks`
-- `settings:open-theme-assets-dir` / `settings:open-mac-typing-privacy`
-
-### 状态机关键机制（state.js）
-
-- **多会话追踪**：`sessions` Map 按 session_id 独立记录状态，`resolveDisplayState()` 取最高优先级
-- **状态优先级**：error(8) > notification(7) > sweeping(6) > attention(5) > carrying/juggling(4) > working(3) > thinking(2) > idle(1) > sleeping(0)
-- **最小显示时长**：防止快速闪切（error 5s、attention/notification 4s、carrying 3s、sweeping 2s、working/thinking 1s）
-- **单次性状态**：attention/error/sweeping/notification/carrying 显示后自动回退（AUTO_RETURN_MS）
-- **睡眠序列**：20s 鼠标静止 → idle-look → 60s → yawning(3s) → dozing → 10min → collapsing(0.8s) → sleeping；鼠标移动触发 waking(1.5s) → 恢复
-- **DND 模式**：右键菜单 / 托盘"休眠（免打扰）"→ 跳过 dozing 直接 yawning → collapsing → sleeping，屏蔽所有 hook 事件；唤醒后播放 waking 动画
-- **working 子动画**：1 个会话 → typing，2 个 → juggling，3+ → building
-- **juggling 子动画**：1 个 subagent → juggling，2+ → conducting
-
-### 主题系统（theme-loader.js + themes/）
-
-Clawd 是一个**主题化**的桌宠——所有动画资源、计时、hitbox、眼球追踪参数都来自主题配置，不是硬编码。
-
-- **内置主题位置**：`themes/clawd/`（像素螃蟹，默认）、`themes/calico/`（三花猫）、`themes/template/`（脚手架源，从 Discovery 菜单隐藏）、`themes/static-test/` + `themes/pr4-*/`（回归测试用）
-- **用户主题位置**：`<userData>/themes/<id>/theme.json`（Windows `%APPDATA%/clawd-on-desk/themes/`、macOS `~/Library/Application Support/...`、Linux `~/.config/...`）
-- **theme.json 必填**：`REQUIRED_STATES = ["idle", "working", "thinking"]`；若启用 `eyeTracking.enabled` 则 idle 资源必须是 SVG 并包含 `#eyes-js`；若声明 `fullSleep` 能力则需 `yawning / dozing / collapsing / waking`；若声明 `miniMode` 则需 8 个 `mini-*` 状态
-- **能力感知（capability-aware）**：主题通过顶层 `capabilities` 声明支持的高级功能（fullSleep / miniMode / eyeTracking / visualFallback 等），UI 用"能力徽章"展示；缺失能力的 state 走 `VISUAL_FALLBACK_STATES` 的回退链（error/attention/notification/sweeping/carrying/sleeping → 回落到 idle 或其它 available state）
-- **默认值覆盖**：`theme-loader.js` 顶部的 `DEFAULT_SOUNDS / DEFAULT_TIMINGS / DEFAULT_HITBOXES / DEFAULT_OBJECT_SCALE / DEFAULT_LAYOUT / DEFAULT_EYE_TRACKING` 为缺省值；主题只需覆盖不同的字段
-- **变体（variants，Phase 3b-swap）**：主题可声明多个变体（如"冬装""夏装"），变体是**白名单 deep-merge**——`VARIANT_ALLOWED_KEYS` 限制可覆盖的字段，`VARIANT_REPLACE_FIELDS`（数组 + displayHintMap）整体替换而非合并
-- **Animation Overrides（PR#95 Path A）**：用户可在 Settings → Animations 里**逐槽位**替换某个状态的资源（持久化到 `prefs.animationOverrides`），与变体正交：变体是作者整套，override 是用户 per-slot
-- **SVG 安全消毒**：`DANGEROUS_TAGS`（script/iframe/foreignObject 等）删除、`on*` 属性剥离、`javascript:` / 外部 `http://` href 阻断、`..` 路径穿越拦截——用户主题不能越狱
-- **资源格式**：支持 SVG / GIF / APNG / WebP / PNG / JPG；动画周期由 `src/animation-cycle.js` 探测（SMIL / CSS 动画精确解析，GIF/APNG 估算，静态图标记 static）
-- **主题创建流程**见 `docs/guide-theme-creation.md`；脚手架 CLI `npm run create-theme <name>` 从 `themes/template/` 拷贝
-
-### Settings Panel（src/settings-*.js + settings.html）
-
-独立的 BrowserWindow，分 4 层严格解耦（核心原则：**store 是唯一真相，controller 是唯一写入者**）：
-
-| 层 | 文件 | 职责 |
-|---|---|---|
-| Schema / 持久化 | `src/prefs.js` | 版本化 `SCHEMA` 定义；`load/save/migrate/validate`；零 Electron 依赖，坏文件自动 `.bak` + fallback 默认值 |
-| 内存 store | `src/settings-store.js` | `createStore()` 返回 `{getSnapshot, subscribe, _commit}`；`_commit` closure-private，外部拿不到；shallow-equal death-loop guard |
-| 控制器 | `src/settings-controller.js` | 唯一写入者；`applyUpdate(key, v)` / `applyBulk(partial)` / `applyCommand(name, payload)` / `hydrate(partial)`（只 validate 跳过 effect，用于启动期导入系统状态如 login-item）；**pre-commit effect gate**——`updates` 注册表里每字段可配 `{validate, effect}`，effect 失败则不提交；返回 `{status, message?}` 同步或 Promise，取决于涉及的 effect 是否 async |
-| UI | `src/settings-renderer.js` + `settings.html` + `preload-settings.js` | 主题卡片 / animation overrides 折叠行 / agent 开关 / 诊断；通过 IPC 调 controller，不直接写任何东西 |
-
-关键取舍：
-- `applyUpdate` 单字段和 `applyBulk` 多字段是**同步/异步同构**的——所有 effect 都同步时返回普通对象，任何 effect 返回 thenable 就整体转 Promise。这对保持"菜单 setter 立即可读"很关键（`ctx.lang = "zh"` 必须立刻在下一行读到）。`applyCommand` 永远 async（命令如 `installHooks` 做真实 IO）。
-- `hydrate()` 是唯一跳过 `effect` 的入口，用于启动时从 `app.getLoginItemSettings()` 等系统 API 导入状态而不触发回写。
-- 设置写入 → controller `_commit` → store 广播 → subscribe 订阅者（menu.js / main.js / tray）响应副作用。没有其它路径能修改 prefs。
-
-**`prefs.agents` 结构**：每个 agent 的运行时开关，格式为 `{ enabled, permissionsEnabled, ... }`（具体字段见 `src/agent-gate.js` 和 `src/prefs.js` 的 SCHEMA）。`agent-gate.js` 的 `isAgentEnabled(snapshot, id)` / `isAgentPermissionsEnabled(...)` 读取这些字段，默认 true 以兼容旧版 prefs（缺字段时也按 true 处理）。
-
-### Permission Bubble 系统（permission.js + server.js → bubble.html 渲染）
-
-- **HTTP hook**：PermissionRequest 事件使用 `type: "http"` hook（阻塞，600s 超时），而非 command hook
-- **`POST /permission`** 端点接收 `{ tool_name, tool_input, session_id, permission_suggestions }`
-- **气泡窗口**：每个权限请求创建独立的 `BrowserWindow`（透明、无边框、alwaysOnTop），加载 `bubble.html`
-- **堆叠布局**：多个权限请求从屏幕右下角向上堆叠，`repositionBubbles()` 管理位置
-- **动态高度**：bubble 通过 IPC `bubble-height` 上报实际渲染高度，主进程据此精确堆叠
-- **决策选项**：Allow（允许）、Deny（拒绝）、suggestion 按钮（如"始终允许"、"自动接受编辑"）
-- **全局快捷键**：`Ctrl+Shift+Y`（Allow）/ `Ctrl+Shift+N`（Deny）操作最新的可操作气泡（排除 elicitation/codex notify/ExitPlanMode），仅在气泡可见时注册，hideBubbles/petHidden 时注销
-- **客户端断连**：`res.on("close")` 检测 Claude Code 超时或用户在终端回答，自动清理气泡
-- **DND 模式**：休眠时自动 deny 所有权限请求，不弹气泡
-- **suggestion 格式**：支持 `addRules`（权限规则）和 `setMode`（切换模式）两种类型
-- **Codex 通知气泡**：Codex CLI 无法使用阻塞式 HTTP hook，通过 JSONL 日志检测 `exec_approval_request` / `apply_patch_approval_request` 触发通知气泡，仅提供 Dismiss 按钮（无 Allow/Deny），30 秒自动过期
-
-### Global Rules 引擎 + macOS 感知
-
-`src/global-rules.js` 整合来自 macOS monitor 子系统的各类事件，统一注入状态机：
-
-- **事件类型 → 状态映射**（`RULE_STATE_MAP`）：
-  - `clipboardReaction` → `carrying`（剪切板内容检测）
-  - `notificationReaction` → `notification`（系统通知过滤）
-  - `mediaPlaybackReaction` → `listening`（音频/视频播放）
-  - `browserReadingReaction` → `reading`（浏览器阅读）
-- **优先级**（`RULE_PRIORITY`）：notificationReaction(5) > clipboardReaction(4) > mediaPlaybackReaction(2) > browserReadingReaction(1)
-- **autoReturn 定时器**：通过 `setTimeoutFn` 注入，支持瞬时状态超时回退
-- **`isBrowserApp()`**：跨模块共享，来自 `macos-browser-activity.js`（`BROWSER_BUNDLE_IDS`：Safari/Chrome/Brave/Edge/Firefox）
-
-**macOS 监控子系统**（`src/macos-*.js`，macOS only）：
-- `macos-browser-activity.js` — bundle ID 白名单
-- `macos-clipboard-monitor.js` — NSPasteboard 轮询，过滤静默重复
-- `macos-frontmost-app-monitor.js` — 检测 Claude Code / Cursor / VS Code 前台活跃
-- `macos-input-monitor.js` — 键盘活跃度（idle/active）
-- `macos-media-monitor.js` — 音频/视频 app 检测
-- `macos-notification-monitor.js` — `notificationPosted` 事件，过滤 agent 相关
-
-### Agent Launcher（Triple-Click / Focus-Fallback）
-
-`src/agent-launcher.js` 支持通过三击或聚焦回退触发 agent CLI：
-
-- **触发模式**（`AGENT_LAUNCHER_TRIGGER_LIST`）：
-  - `tripleClick` — 三击 hitWin 检测
-  - `focusFallback` — 输入窗口失焦时的兜底
-  - `tripleAndFocus` — 同时启用两者
-- **命令校验**（`validateLauncherCommand`）：最大 256 字符、禁止 `|&`$\`<>` 等shell 元字符
-- **cwd 解析**（`resolveLauncherCwd`）：`..` 路径穿越保护；目录不存在则 fallback 到 `$HOME`
-- **macOS 前台授权**：触发 `focusFallback` 时自动调用 `AllowSetForegroundWindow`
-
-### opencode Plugin 架构（hooks/opencode-plugin/index.mjs）
-
-opencode 是唯一**以 plugin 形式集成**的 agent，其他 agent 都是 hook 脚本（fork 子进程）。Plugin 跑在 opencode 进程内的 Bun runtime 里，拿到 `ctx.client`、`ctx.serverUrl`、`ctx.directory` 等上下文。
-
-- **进程树 walk 从 process.pid 起步**（不是 ppid），因为 plugin IS opencode；其他 hook 脚本从 ppid 起步因为它们是 opencode spawn 的子进程。在 `getStablePid()` 里实现，同时采用"外层终端优先"策略以适配 Antigravity 等 Electron 终端（renderer → main 都叫 `antigravity.exe`）
-- **session 生命周期 = 主 session + 多个子 session**：opencode 的 `task` 工具不生 subtask part，而是**直接 session.created 出新 sessionID**（agent=explore）。Clawd 多会话 fanout 因此免费跑通 1→typing / 2→juggling / 3+→building
-- **Root session 门控**（Phase 3）：plugin 模块状态 `_rootSessionId` 记首次见到的 sessionID；只有 root 的 `session.idle` 才映射 `attention/Stop`（happy 动画），其他子 session 的 `session.idle` 降级为 `sleeping/SessionEnd` 让 state.js 从 Map 里删掉，避免每次子任务完成都闪一下 happy
-- **反向 HTTP bridge**（Phase 2）：opencode TUI 不对外绑定 HTTP（`ctx.serverUrl` 是 phantom URL，`ctx.client.fetch` 绑在 in-process Hono router 上），Clawd 无法直接调 opencode REST 回复权限。解决方法：plugin 启动时用 `Bun.serve({port: 0})` 随机端口起一个 bridge，token 用 `randomBytes(32).toString("hex")` + `timingSafeEqual` 鉴权；Clawd POST 到 bridge，bridge 再用 `ctx.client._client.post({url: "/permission/:id/reply", body: {reply}})` 调 in-process Hono
-- **permission.ask hook 是死 hook**（2026-04-05 Phase 2 Spike 实测）：opencode 1.3.13 二进制已迁到 v2 `permission.asked` 事件名，但 SDK 1.1.51 的 `permission.ask` hook 派发没跟着迁，hook 0 次调用。只能走 event hook 路线
-- **event hook 必须 fire-and-forget**：plugin 跑在 opencode 进程内，fetch 阻塞会直接拖慢 TUI。POST 用 1000ms AbortController 超时 + try-catch 吞错误，从不 await 结果
-- **端口自愈**：plugin 独立维护 `_cachedPort`，读 `~/.clawd/runtime.json` 失败时扫 23333-23337 全候选，用 `x-clawd-server: clawd-on-desk` response header 鉴别身份
-- **打包路径处理**：`opencode-install.js` 把 `app.asar/` 替换为 `app.asar.unpacked/`（参考 cursor-install.js:78），确保打包后 opencode 能直接 require plugin 的绝对路径
-
-### 终端聚焦系统
-
-- hook 脚本通过 `getStablePid()` 遍历进程树找到终端应用 PID（Windows Terminal、VS Code、iTerm2 等）
-- `source_pid` 随状态更新发送到 main.js，存入 session 记录
-- 右键菜单 Sessions 子菜单点击 → `focusTerminalWindow()` 用 PowerShell（Win）/ osascript（Mac）聚焦终端窗口
-- 通知状态（attention/notification）自动聚焦对应会话的终端
-
-### i18n 国际化
-
-- 支持英文（en）、中文（zh），通过右键菜单 / 托盘菜单 Language 切换
-- 字符串表集中在 `src/i18n.js`，菜单 / 气泡按钮 / Settings Panel / 更新气泡共用同一份
-- 语言偏好持久化到 `clawd-prefs.json`，启动时通过 `hydrate()` 灌入 controller
-
-### 自动更新
-
-- **Git 模式**（非打包，macOS/Linux 源码运行）：`git fetch` 比较 HEAD → 有更新时 `git pull` + `npm install`（依赖变化时）→ `app.relaunch()`；通过 `getRepoRoot()` 检测 `.git` 目录自动启用
-- **electron-updater 模式**（打包，Windows NSIS）：下载安装 NSIS 更新包，`autoInstallOnAppQuit = true`
-- 托盘菜单"Check for Updates"手动触发
-
-### 提示音系统（main.js playSound → IPC → renderer.js Audio）
-
-- `app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required")` 在任何窗口创建之前设置，解决 Chromium autoplay 限制
-- `playSound(name)` 在 main.js 中定义，检查 `soundMuted`、`doNotDisturb`、10 秒 cooldown 后通过 IPC `play-sound` 发送到渲染窗口
-- renderer.js 用 `_audioCache` 缓存 Audio 对象，避免重复创建
-- state.js `applyState()` 中触发：attention/mini-happy → complete 音效，notification/mini-alert → confirm 音效
-- 菜单"音效"checkbox 控制 `soundMuted`，持久化到 `clawd-prefs.json`
-- 音效素材：`assets/sounds/complete.mp3`、`assets/sounds/confirm.mp3`（≤50KB）
-
-### 眼球追踪系统（tick.js 计算 → renderer.js 渲染）
-
-- tick.js 每 50ms（~20fps）轮询光标位置，计算眼球偏移量（MAX_OFFSET=3px，量化到 0.5px 像素网格）
-- 通过 IPC `eye-move` 发送 `{dx, dy}` 到 renderer
-- renderer 操作 SVG 内部 DOM：`#eyes-js` translate + `#body-js` 轻微偏移 + `#shadow-js` 拉伸
-- **dedup 优化**：鼠标未移动时跳过发送；但从 idle-look 返回 idle-follow 时需要 `forceEyeResend` 旁路，否则眼球位置不会重新同步
-
-### 点击反应系统（hit-renderer.js 检测 → main relay → renderer.js 播放）
-
-- 双击 → 戳反应（左/右方向检测，2.5s，react-left/react-right SVG）
-- 4 连击 → 双手拍反应（3.5s，react-double SVG）
-- 拖拽 → 拖拽反应（持续到松手）
-- 拖拽判定：鼠标位移 > 3px（DRAG_THRESHOLD），否则视为点击
-- 输入检测在 hitWin，反应动画在 renderWin，通过 main IPC relay
-- 反应期间 detach 眼球追踪，结束后 reattach
-
-### 极简模式（Mini Mode）
-
-角色藏在屏幕右边缘，窗口一半推到屏幕外，屏幕边缘自然遮住另一半身体。
-
-**进入方式**：
-- 拖拽到右边缘（SNAP_TOLERANCE=30px）→ 快速滑入 + mini-enter 动画
-- 右键菜单"Mini Mode" → 螃蟹步走到边缘 → 抛物线跳入 → 探头入场
-
-**核心机制**（mini.js + main.js）：
-- `miniMode` 顶层标志，`applyState()` 拦截 notification → mini-alert, attention → mini-happy，其他状态静默
-- `miniTransitioning` 过渡保护，螃蟹步/入场期间屏蔽 hook 事件和 peek
-- `checkMiniModeSnap()` 遍历所有显示器右边缘 + 中心点 XY 范围检查
-- Peek hover：`startMainTick()` 检测 `mouseOverPet` + `currentState === "mini-peek"` 控制滑出/滑回
-- `miniIdleNow` 独立于 `idleNow`，仅走眼球追踪，跳过 idle-look/sleep 序列
-- 窗口动画：`animateWindowX()`（滑动）+ `animateWindowParabola()`（抛物线跳跃，用 `setPosition()` 避免 DPI 漂移）
-- 持久化：`savePrefs()` 存 miniMode/preMiniX/preMiniY，启动时恢复 + Y 轴 clamp
-
-**Mini 状态 → SVG 映射**：
-| 状态 | SVG | 用途 |
-|------|-----|------|
-| mini-idle | clawd-mini-idle.svg | 待机：呼吸+眨眼+手臂晃动+眼球追踪 |
-| mini-enter | clawd-mini-enter.svg | 入场：一次性滑入弹跳→手臂伸出→静止 |
-| mini-peek | clawd-mini-peek.svg | Hover 探头：快速招手 3 下 |
-| mini-alert | clawd-mini-alert.svg | 通知：感叹号弹出 + >< 挤眼 |
-| mini-happy | clawd-mini-happy.svg | 完成：花花 + ^^ 眯眼 + 星星 |
-| mini-crabwalk | clawd-mini-crabwalk.svg | 右键进入时的螃蟹步 |
-| mini-enter-sleep | clawd-mini-enter-sleep.svg | DND 状态下进入 mini 的入场动画 |
-| mini-sleep | clawd-mini-sleep.svg | DND 休眠：Zzz + hover 可探头（不唤醒） |
-
-## 状态 → 动画映射
-
-**权威表格见 `docs/state-mapping.md`**（带 Clawd / Calico 主题的 GIF 预览），此处只补充内部行为要点。
-
-- **working 子动画**：1 个会话 → typing，2 个 → juggling，3+ → building
-- **juggling 子动画**：1 个 subagent → juggling，2+ → conducting
-- **Mini 状态**（极简模式下用的小尺寸动画）：`mini-idle` / `mini-enter` / `mini-enter-sleep` / `mini-crabwalk` / `mini-peek` / `mini-alert` / `mini-happy` / `mini-sleep` / **`mini-working`**（1 会话时的 mini typing，PR#121/122/123 引入；主题若无 typing 资源则静默跳过）
-- **睡眠序列**：20s 鼠标静止 → idle-look → 60s → yawning(3s) → dozing → 10min → collapsing(0.8s) → sleeping；鼠标移动触发 waking(1.5s) → 恢复
-- **DND 休眠**：跳过 dozing 直接 yawning → collapsing → sleeping，屏蔽所有 hook
-- **自动回退**：attention / error / sweeping / notification / carrying 是一次性状态，显示后按 `autoReturn` 表自动回 idle（时长由主题 `theme.json timings.autoReturn` 覆盖，默认见 `theme-loader.js DEFAULT_TIMINGS`）
-
-## 素材规则
-
-- **按主题组织**：每个主题目录自带 `assets/`（`themes/clawd/assets/`、`themes/calico/assets/`、用户主题 `<userData>/themes/<id>/assets/`）；`assets/svg/` 和 `assets/gif/` 是默认 Clawd 主题使用的根路径（theme-loader 里 `assetsSvgDir` / `assetsSoundsDir` 指向这里）
-- **文档预览用 GIF**：`assets/gif/` 里的 GIF 给 README / docs 展示（导出自 APNG / SVG）；运行时不直接读
-- **源文件工作区**：需要编辑的素材复制到 `assets/source/` 再修改，不动发布版
-- **支持的运行时格式**：SVG / GIF / APNG / WebP / PNG / JPG；SVG 走 `<object type="image/svg+xml">` 因为需要访问内部 DOM（眼球追踪），其他格式走 `<img>`
-- **SVG 内部约定 ID**（主题可在 `theme.json eyeTracking.ids` 覆盖）：`#eyes-js`（眼球）、`#body-js`（身体）、`#shadow-js`（影子）、`#eyes-doze`（睡眠眼）
-- **SVG 消毒**：用户主题 SVG 进来走白名单消毒（`DANGEROUS_TAGS` 剥离、`on*` 属性删除、`javascript:` href 阻断、外部 http 资源阻断、`..` 路径穿越阻断）
-
-## 关键 Electron 配置
-
-- `win.setFocusable(false)` — 渲染窗口永不抢焦点
-- `hitWin.focusable: true` — 输入窗口允许激活（修复拖拽 bug 的关键，副作用是点击会短暂抢焦点）
-- `win.showInactive()` — 显示时不打断用户输入
-- 资源路径始终用 `path.join(__dirname, ...)` — 确保打包后不丢文件
-- 透明无边框浮窗：`frame: false`, `transparent: true`, `alwaysOnTop: true`
-- 单实例锁：`app.requestSingleInstanceLock()` 防止重复启动
-- 位置持久化：窗口坐标 + 尺寸存入 `clawd-prefs.json`
-- 多显示器边界钳制：`clampToScreen()` 用 `getNearestWorkArea()` 查找最近显示器工作区
-
-## 开发规范
-
-- 敏感信息只放 `.env`，禁止硬编码
-- 注册 Claude Code hook 时必须**追加**到已有 hook 数组，不能覆盖
-- HTTP 服务端口范围 `127.0.0.1:23333-23337`，运行时端口写入 `~/.clawd/runtime.json`，退出时清理；全部占用时降级为 idle-only 模式
-- hook 脚本仅依赖 Node 内置模块 + 同目录的 `server-config.js` / `shared-process.js` / `json-utils.js`，禁止引入三方包（所有 hook 入口：`clawd-hook.js` / `copilot-hook.js` / `cursor-hook.js` / `gemini-hook.js` / `kiro-hook.js` / `codebuddy-hook.js` 都复用 `shared-process.js` 的进程树遍历 + 终端名白名单）
-- main.js 启动时自动调用 `registerHooks({ silent: true })` 注册缺失的 hooks
-- PermissionRequest 必须用 HTTP hook（阻塞式），其他事件用 command hook（非阻塞式）
-- 极简模式动画期间（`miniTransitioning`），所有窗口定位路径（`always-on-top-changed`、`display-metrics-changed`、`display-removed` 等）都必须检查此标志，否则并发定位会导致 `setPosition()` 崩溃
-
-### Provider Usage 检查（无 LLM）
-
-provider usage 通过 Python 脚本并行拉取 Codex + MiniMax 数据，无需 LLM 调用。架构分 5 层：
-
-| 层 | 文件 | 职责 |
-|---|---|---|
-| 入口 | `provider-usage-runtime.js` | 定时调度：对齐到 5-min 边界（:05/:15/:25/:35/:45/:55），`shouldDefer` 在 mini 模式下推迟，`onUsageUpdate` 推送气泡 UI |
-| 数据获取 | `provider-usage-fetchers.js` | `fetchProviderUsageSnapshots()` 并行调用 Python checker，`runChecker()` 执行 `python3 script.py --provider codex/minimax --json` |
-| 数据模型 | `provider-usage-model.js` | `normalizeUsageSnapshot` / `createEmptyProviderGroup` / `providerGroupHasUsableData`；`PROVIDER_WINDOW_MAP` 定义 fiveHour/weekly 窗口 |
-| 布局渲染 | `provider-usage-layout.js` | `<=50%` warning（橙）/ `<20%` critical（红）；支持 detailText / resetText 自定义行 |
-| LLM 兜底 | `provider-usage-summary-fallback.js` | `buildFallbackSummary()` 纯阈值逻辑（`<20%`=critical，`<50%`=warning），无需 LLM |
-
-**使用方法**：
-
-```bash
-cd ~/Desktop/Github/ai_skills/ai-ml-skills/utility/provider-usage-checker
-
-# 检查 Codex（OAuth token 认证，从 ~/.codex/auth.json 读取）
-python3 scripts/check_usage.py --provider codex --json --debug
-
-# 检查 MiniMax（Playwright 无头浏览器，需先确保凭证已写入 providers/minimax.py）
-python3 scripts/check_usage.py --provider minimax --json --debug
-```
-
-**配置**：`clawd-prefs.json` 中 `providerUsageChecker.scriptPath` 指定 Python 脚本路径。超参：`timeoutMs`（默认 30000ms）、`python`（默认 `python3`）。
-
-**MiniMax 凭证**：硬编码在 `providers/minimax.py` 顶部 `MINIMAX_EMAIL` / `MINIMAX_PASSWORD`。首次运行需检查页面结构是否变更（若有元素找不到，用 `--debug` 排查）。
-
-**Hermes LLM**：已从 provider usage 管线移除；`hermes-checkin.js`（打卡气泡）和 `hermes-command.js`（Hermes 调用工具）保留，用于独立的时间打卡功能。
-
-### Hermes 时间打卡系统
-
-`src/hermes-checkin.js` 驱动时间打卡气泡，按工作时间槽触发：
-
-- **槽位定义**（`buildTimeContext`）：morning(5-10h)、midday(11-13h)、afternoon(14-16h)、evening(17-22h)、late-night（其余）
-- **prompt 构建**（`buildPromptInvocation`）：注入当前时间槽 + `clipboardContextSummary`，调用 MiniMax LLM 生成个性化打卡文案
-- **输出清洗**（`hermes-checkin-cleaner.js`）：去除 markdown code block、反引号、多余空行
-- **气泡显示**：`time-checkin-bubble.html` 渲染，`time-checkin-bubble.js` 管理生命周期
-
-### 翻译气泡系统
-
-`src/translate.js` 使用 MiniMax API（`MINIMAX_API_KEY` env var，`baseURL` = `https://api.minimaxi.com/anthropic`）翻译文本，支持中↔英双语气泡（`translate-bubble.html`）。`translate-bubble-timer.js` 管理气泡自动消失计时器。
-
-## 已知限制
-
-- **hitWin 点击会抢焦点**：输入窗口 `focusable: true` 是修复拖拽 bug 的关键（去掉 WS_EX_NOACTIVATE），但副作用是点击桌宠会短暂抢走编辑器焦点。目前认为可接受，暂不处理。
-- **启动恢复**：桌宠在 agent 会话中途启动时，`detectRunningClaudeProcesses()` 会检测已运行的 Claude 进程并激活 `startupRecoverActive` 标志，抑制 idle→sleep 序列，保持 idle-follow 等待 hook 到来；若未检测到进程则保持 idle 直到下一个 hook 事件触发
-- **Windows 前台窗口锁**：已通过 ALT key trick + koffi FFI `AllowSetForegroundWindow` 委托前台权限给 PowerShell helper 进程来绕过。菜单点击时 Electron 持有前台权限，通过 `AllowSetForegroundWindow(psProc.pid)` 委托给 PS 进程，PS 进程再用 ALT keybd_event + `SetForegroundWindow` 激活目标窗口。大多数场景有效，但仍有边缘情况可能失败（PID 不匹配终端窗口、PS helper 未初始化、koffi 加载失败等）
-- hook 脚本依赖 Node.js 可用
-- Windows 终端聚焦依赖 `koffi`（FFI 调用 `user32.dll AllowSetForegroundWindow`），koffi 加载失败时降级为纯 ALT trick；macOS 用 `osascript`
-- Codex CLI：JSONL 轮询有 ~1.5s 延迟；无终端聚焦（日志不含终端 PID）；Windows 下 hooks 被 Codex 硬编码禁用
-- Copilot CLI：需手动创建 `~/.copilot/hooks/hooks.json`；无权限气泡（仅支持 deny）
-- Gemini CLI：需 Gemini CLI 支持 hooks；无权限气泡；无 subagent 检测
-- Cursor Agent：无权限气泡（Cursor 权限在 stdout 处理，非 HTTP 阻塞式）；启动恢复检测匹配编辑器本体会误触发，已移除进程检测，靠 hook 事件激活
-- Kiro CLI：无 global hooks 机制——hooks 只能注入到 per-agent 配置（`~/.kiro/agents/*.json`）。内置 `kiro_default` 没有可编辑 JSON，无法覆盖；`kiro-install.js` 的策略是（a）遍历所有现有 custom agent 注入 hooks（b）额外创建并维护 `clawd` agent，启动时从 `kiro_default` 的 built-in 定义重新同步字段（EXCLUDED_KEYS 过滤），用户必须 `kiro-cli --agent clawd` 或 `/agent swap clawd` 才能启用。无 HTTP hook / 无权限 / 无 subagent（仅状态同步）。状态 hook 已在 macOS 验证
-- CodeBuddy：Claude Code 兼容的 hook 格式，注册到 `~/.codebuddy/settings.json`；支持权限，capabilities 同 Claude Code 但无 subagent
-- opencode：子会话（task 工具分派的 explore agent）跑起来那 5-8 秒会短暂出现在 Sessions 右键菜单里，完成后自动清理——是纯视觉问题，不影响建筑动画。真要彻底隐藏需要新增 `subagent` 字段贯穿 server.js / state.js / menu.js（不能复用 headless，因为 headless 会把 session 从多会话计数里排除，导致建筑动画丢失）
-- opencode：终端聚焦锚定启动 opencode 的终端窗口；用 `opencode attach` 从其他窗口接入时，点击桌宠仍会跳到最初的启动窗口
-- opencode：permission.ask hook 在 1.3.13 未被调用（SDK/二进制版本不一致），权限只能走 event hook + 反向 bridge 路线；未来 opencode 修复此 hook 后可以考虑迁回
-- 进程存活检测：main.js 定期检查 agent 进程是否存活，清理孤儿会话；但依赖进程名匹配，非标准进程名可能漏检
-
-## ⚠️ 不要再修 Language 子菜单截断 bug
-
-右键菜单的 Language 子菜单底部被截掉一小条（约 2-4px）。这是 Electron transparent + alwaysOnTop 窗口与 Windows DWM 菜单渲染的底层兼容问题，**不影响使用**。
-
-已花费 3+ 小时尝试多种方案全部失败。结论：截断的不是某个菜单项，而是"菜单底部"这个位置。win 的透明矩形 bounds 在 DWM z-order 中遮住了菜单底边一小条。这是 Electron + Windows DWM 的底层行为，纯 JS 层面无法解决。
-
-**绝对不要碰 `win.setAlwaysOnTop(false)`：** 这个窗口是 transparent + unfocusable + skipTaskbar 的，一旦掉出 topmost 就沉到桌面底层，看不见也关不掉。
+# Clawd on Desk Spec
+
+This file is the durable project spec for AI agents and human maintainers. It should explain what the project is trying to accomplish and why those choices matter. It should avoid low-level implementation decisions unless they are constraints that protect product quality, user trust, or cross-platform behavior.
+
+Use small, focused updates to this file when product intent changes. The goal is to reduce context decay, keep agent work aligned with the project mission, and preserve intent fidelity across many separate coding sessions.
+
+## Mission
+
+Clawd on Desk is a desktop companion for AI coding work. It makes agent activity visible, interruptible, and emotionally legible without forcing users to watch terminal logs.
+
+The product vision is a lightweight screen resident that reflects the state of one or more coding agents in real time: composing, thinking, working, juggling subagents, waiting for permission, reporting errors, celebrating completion, or sleeping when activity stops. It should make agent systems feel observable and manageable while staying out of the user's way.
+
+The next-stage vision is more specific: Clawd should become the pet-centered frontend and interaction shell for an AI backend, with Hermes as the primary agent backbone. Hermes should handle complex tasks, tools, memory, skills, and future task assignment. Clawd should handle user interaction, layout, animation, state mapping, and feedback.
+
+The project is not just an animation toy. It is a thin desktop coordination layer for local AI developer tools, with agent hooks, session state, permission surfaces, usage/status panels, and small assistant utilities exposed through an Electron app. The pet should remain the visible center of the experience, while backend agents remain replaceable execution engines.
+
+## Goals
+
+- Show accurate, low-friction visual feedback for AI coding agent activity.
+- Support multiple agents and simultaneous sessions without making users choose a single vendor.
+- Surface permission requests in a desktop-native way while preserving each agent's fallback behavior.
+- Keep the companion unobtrusive: draggable, click-through where appropriate, sleep-aware, and respectful of Do Not Disturb.
+- Make themes and character assets extensible without allowing third-party assets to compromise security.
+- Keep cross-platform behavior coherent on macOS, Windows, Linux, WSL, and remote SSH workflows where supported.
+- Give AI contributors enough durable context to make correct small changes without rediscovering the product intent each time.
+- Build Hermes integration around backend lifecycle and functional results, not model-selected UI commands.
+- Keep Clawd's frontend behavior deterministic: the app maps known backend states to known animations locally.
+- Keep provider budget/status visibility useful without making it part of the agent reasoning loop.
+
+## Target Audience
+
+- Developers using AI coding agents such as Claude Code, Codex CLI, Copilot CLI, Gemini CLI, Kiro CLI, CodeBuddy, and opencode.
+- Users running multiple agent sessions who need quick ambient status rather than another terminal dashboard.
+- Theme authors who want to create custom desktop companion characters.
+- Maintainers and AI agents extending integrations, settings, themes, and desktop behavior.
+
+## Current Status
+
+The repository currently contains an Electron desktop app with a CommonJS main process, renderer pages, preload bridges, hook installers, agent registry modules, built-in themes, tests, and packaging configuration.
+
+Supported or partially supported surfaces found in the codebase include:
+
+- Multi-agent state ingestion through hooks, local log polling, and plugin integrations.
+- Session state resolution and animation priority handling.
+- Permission bubbles and per-agent permission toggles.
+- Theme loading, validation, SVG sanitization, hit geometry, mini mode, and custom theme scaffolding.
+- Settings persistence, tray/menu actions, i18n, startup window state, and login item helpers.
+- macOS activity collectors for typing, frontmost app, clipboard, media, and related global activity rules.
+- Clipboard history/sanitization, translation bubbles, time check-ins, provider usage summaries, update bubbles, and Hermes chat/check-in helpers.
+- A pet-adjacent Hermes chat surface that opens on the left side of the pet, plus a right-side provider/status HUD.
+- Unit tests under `test/` for many non-Electron and extracted logic modules.
+
+Next-stage status:
+
+- Achieved: Clawd already has the core frontend foundation: theme-driven pet rendering, hit-window input handling, deterministic state mapping, click/drag reactions, mini mode, permission/status bubbles, a right-side provider usage HUD, and initial Hermes chat/check-in helpers.
+- Achieved: The Hermes chat surface is oriented as a left-side pet companion board, and Hermes availability/activity can be reflected in the desktop UI without asking Hermes to choose animations.
+- Partially achieved: Hermes exists as a backend path, but it is still not the central durable task backbone.
+- Left to build: Hermes API Server/Gateway integration, richer lifecycle-to-state mapping, and longer-running Hermes task workflows.
+- Main optimization target: remove any need for Hermes or another LLM to decide animations. The model should solve functional tasks; Clawd should translate request lifecycle into UI state.
+
+Known constraints remain:
+
+- Electron window, tray, and full end-to-end desktop behavior are not comprehensively automated.
+- Some agent integrations have inherent limitations because their upstream tools expose different hook, permission, and process metadata.
+- Platform support must be treated as a product surface, not an afterthought; a feature that works only on one OS needs clear fallback behavior.
+
+## Codebase Hygiene
+
+There is no confirmed massive tracked runtime dead code at the current baseline. Some directories and files are intentionally non-core and should not be confused with product runtime:
+
+- Core runtime: `src/`, `agents/`, `hooks/`, `themes/`, and shipped `assets/`.
+- Tests: `test/` and focused manual smoke scripts such as root `test-*.sh`.
+- Documentation/specs: `AGENTS.md`, `README*`, and tracked files under `docs/`.
+- Non-core support: `perf/`, resource/stress scripts, and `tools/` artwork or pipeline helpers.
+- Experimental path: study-supervisor assets and scripts, including `scripts/supervisor.py`, `requirements-study-supervisor.txt`, `themes/study-supervisor/`, and the `/supervisor` state endpoint.
+- Generated output: `dist/` is ignored build output and must not be treated as source or roadmap material.
+
+Before deleting code, classify it as runtime path, packaged asset, test-only helper, manual/dev tool, experimental prototype, or generated output. Non-core does not automatically mean dead. Prefer documenting ownership and intent before removal.
+
+## Tech Stack
+
+- Runtime: Node.js 20 and Electron.
+- Module style: CommonJS.
+- UI surfaces: Electron `BrowserWindow` pages under `src/`, with preload bridges for renderer-safe APIs.
+- State and settings: small CommonJS modules such as `state.js`, `prefs.js`, `settings-controller.js`, `theme-loader.js`, and related helpers.
+- Agent integration: modules under `agents/`, hook installers and hook scripts under `hooks/`, and plugin/editor glue under `extensions/`.
+- Themes and assets: built-in theme packages under `themes/`, shipped icons/SVG/GIF/sound assets under `assets/`.
+- Tests: Node's built-in test runner with `node:test` and `node:assert`.
+- Packaging: `electron-builder`.
+
+Useful commands:
+
+- `npm install` installs dependencies.
+- `npm start` launches the desktop app through `launch.js`.
+- `npm test` runs all unit tests.
+- `npm run build` creates the default packaged build.
+- `npm run build:mac` creates a macOS build.
+- `npm run build:linux` creates a Linux build.
+- `npm run create-theme -- my-theme` scaffolds a custom theme.
+- `npm run install:claude-hooks` and related `install:*` scripts register local agent hooks for manual testing.
+
+## Constraints
+
+- Preserve user trust. Never commit local hook configs, API keys, private logs, generated package output, or user-specific state.
+- Prefer small, reversible changes that match the existing code shape.
+- Keep implementation details out of this spec unless they represent stable constraints or product intent.
+- Do not add new vendor lock-in unless the integration has clear fallback behavior and does not degrade existing agents.
+- Treat permission flows as high-trust UX. If a desktop prompt cannot safely answer a request, the underlying agent's native prompt must remain usable.
+- Keep DND, sleep, click-through, drag behavior, and startup recovery coherent when adding new activity signals.
+- Keep the left Hermes board spatially subordinate to the pet; it should open beside the pet and avoid becoming a detached primary workspace.
+- Keep the right provider/status HUD compact. Provider usage checks should be deterministic utility calls, optional where a provider is disabled, and tolerant of slower browser-backed checks.
+- Validate and sanitize third-party theme assets through the existing theme flow.
+- Avoid large rewrites of `src/main.js`; prefer extracting focused modules when changing shared behavior.
+- Maintain backward compatibility for hook registration, auto-start behavior, and settings migrations across macOS, Windows, and Linux.
+- Add or update tests in `test/` for behavior changes whenever the logic can be exercised outside a live Electron window.
+- Do not ask Hermes or any LLM to choose a Clawd animation such as `juggling`, `sweeping`, or `error`. Animation choice is a Clawd frontend responsibility.
+- Prefer Hermes API Server/Gateway for the next-stage backbone. If Hermes is offline, Clawd should show setup/status information rather than silently falling back to a different execution path.
+- Keep frontend boards simple and transparent. The pet is the primary visual object; boards should support the pet, not become the product's center of gravity.
+- Do not remove non-core support code as "dead" without a dedicated cleanup pass that proves it is unused and records the decision in this spec or an adjacent doc.
+
+## Not In Scope For This Spec
+
+This spec should not decide low-level implementation details such as exact function names, internal class boundaries, IPC channel names, CSS selectors, animation file names, or individual hook payload schemas. Those belong in feature specs, code comments where necessary, tests, and implementation PRs.
+
+This spec also should not become the changelog. Keep detailed release notes, issue lists, and one-off bug investigations in docs or PRs.
+
+## Roadmap
+
+Roadmap is a living section. It should record sequence and intent, not implementation. Each phase should be expanded through its own feature spec before code is changed.
+
+### Phase 0: Stabilize The Spec And Baseline
+
+Intent: make the repository easier for AI agents and maintainers to reason about.
+
+Status: mostly complete.
+
+Expected outcomes:
+
+- Keep this file aligned with the actual codebase and documented commands.
+- Clarify current product scope and constraints before deciding future roadmap items.
+- Fix small technical mismatches discovered during repository scans.
+
+### Phase 1: Clawd As Hermes Frontend Shell
+
+Intent: make Clawd the pet-centered frontend for Hermes-backed AI work while preserving a deterministic, low-latency UI state machine.
+
+Status: in progress.
+
+Product shape:
+
+- Center: Clawd pet remains the core visual actor and activity indicator.
+- Right: a compact status board shows existing provider budgets and future Hermes health/activity status.
+- Left: a simple transparent board sits beside the pet and expands into Hermes chat/input when opened.
+- Interaction: single click remains non-invasive and keeps current focus behavior; double click opens the left Hermes board.
+- Backend: Hermes is the primary backbone for complex tasks, skills, memory, and future delegation.
+- Frontend: Clawd owns animation, layout, state mapping, and user feedback.
+
+Expected outcomes:
+
+- Clawd can start a Hermes-backed interaction from the pet-centered UI.
+- Clawd maps Hermes lifecycle locally: request start means thinking/working, success means attention/idle, failure means error or offline/setup state.
+- Hermes returns functional results only; it does not send animation commands.
+- If Hermes API Server/Gateway is unavailable, Clawd shows clear setup/offline status.
+- Existing agent-session awareness and provider HUD behavior remain intact.
+
+Non-goals:
+
+- Do not replace the current multi-agent integrations with Hermes.
+- Do not build custom middleware only to animate the pet.
+- Do not make Hermes responsible for frontend state, layout, or animation naming.
+- Do not auto-start or reconfigure Hermes without explicit user action.
+
+### Phase 2: Hermes Backbone Expansion
+
+Intent: grow Hermes from a chat backend into the durable task backbone behind Clawd.
+
+Status: future.
+
+Expected outcomes:
+
+- Support longer-running task workflows while preserving immediate Clawd feedback.
+- Surface Hermes skills, memory, and task assignment through simple frontend affordances.
+- Keep backend capability expansion behind stable Clawd lifecycle events.
+- Evaluate Gateway/API features before adding new CLI-only behavior.
+
+## Engineering Guidelines
+
+Follow the existing style: CommonJS modules, double quotes, semicolons, and indentation matching the edited file. Use `camelCase` for variables and functions, `UPPER_SNAKE_CASE` for shared constants, and kebab-case filenames such as `theme-loader.js`.
+
+Keep renderer markup and preload bridges close to the feature they support. Prefer existing helper APIs and local patterns over new abstractions. Add abstractions only when they remove real complexity or match an established module boundary.
+
+When reviewing or changing code, protect unrelated user work in the git tree. Do not revert changes you did not make.

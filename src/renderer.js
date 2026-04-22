@@ -198,6 +198,34 @@ function applyProviderUsageHudLayout() {
   providerUsageHud.style.setProperty("--provider-hud-scale", String(scale));
 }
 
+function renderHermesStatusRow(snapshot) {
+  const hs = (snapshot && snapshot.hermesStatus) || { status: "offline" };
+  const status = hs.status;
+  const labels = {
+    available: "Ready", thinking: "Thinking\u2026",
+    working: "Working\u2026", offline: "Offline", error: "Error",
+  };
+  const statusClass = {
+    available: "ok", thinking: "warning",
+    working: "warning", offline: "unavailable", error: "error",
+  }[status] || "unavailable";
+  const label = labels[status] || "Offline";
+  return (
+    '<div class="provider-usage-row provider-usage-hermes" data-provider="hermes" data-status="' + statusClass + '">' +
+      '<div class="provider-usage-head">' +
+        '<span>Hermes</span>' +
+      '</div>' +
+      '<div class="provider-usage-windows">' +
+        '<div class="provider-usage-window" data-status="' + statusClass + '">' +
+          '<div class="provider-usage-window-head">' +
+            '<span class="provider-usage-window-label">' + escapeHtml(label) + '</span>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
+}
+
 function renderProviderUsageHud() {
   if (!providerUsageHud) return;
   if (_inMiniMode || !providerUsageSnapshot || providerUsageSnapshot.hudEnabled === false || !providerUsageSnapshot.providers) {
@@ -234,7 +262,7 @@ function renderProviderUsageHud() {
         `<div class="provider-usage-windows">${windowsMarkup}</div>` +
       `</div>`
     );
-  }).join("");
+  }).join("") + renderHermesStatusRow(providerUsageSnapshot);
   applyProviderUsageHudLayout();
 }
 

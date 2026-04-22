@@ -16,6 +16,19 @@ describe("provider-usage-layout", () => {
     assert.ok(scale >= 0.72);
   });
 
+  it("fits a taller hud that includes the Hermes status row", () => {
+    const scale = computeHudScale({
+      containerHeight: 200,
+      contentHeight: 260,
+      topOffset: 10,
+      bottomOffset: 8,
+      minScale: 0.68,
+    });
+
+    assert.ok(scale < 1);
+    assert.ok(scale >= 0.68);
+  });
+
   it("honors the minimum scale floor", () => {
     assert.strictEqual(
       computeHudScale({ containerHeight: 80, contentHeight: 400, minScale: 0.7 }),

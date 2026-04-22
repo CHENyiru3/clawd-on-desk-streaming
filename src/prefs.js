@@ -132,7 +132,7 @@ const SCHEMA = {
     defaultFactory: () => ({
       python: "python3",
       scriptPath: "/Users/eric_yiru/Desktop/Github/ai_skills/ai-ml-skills/utility/provider-usage-checker/scripts/check_usage.py",
-      timeoutMs: 30000,
+      timeoutMs: 300000,
       browser: "auto",
     }),
     normalize: normalizeProviderUsageChecker,
@@ -146,7 +146,6 @@ const SCHEMA = {
       "claude-code": { enabled: true, permissionsEnabled: true },
       "codex": { enabled: true, permissionsEnabled: true },
       "copilot-cli": { enabled: true, permissionsEnabled: true },
-      "cursor-agent": { enabled: true, permissionsEnabled: true },
       "gemini-cli": { enabled: true, permissionsEnabled: true },
       "codebuddy": { enabled: true, permissionsEnabled: true },
       "kiro-cli": { enabled: true, permissionsEnabled: true },
@@ -285,6 +284,8 @@ const AGENT_LAUNCHER_COMMAND_MAX = 256;
 const AGENT_LAUNCHER_CWD_MAX = 4096;
 const TIMECHECKIN_TIMEOUT_MIN = 5000;
 const TIMECHECKIN_TIMEOUT_MAX = 120000;
+const PROVIDER_USAGE_TIMEOUT_MIN = 5000;
+const PROVIDER_USAGE_TIMEOUT_MAX = 300000;
 
 /** Single-line command/path token — no shell metacharacters (prefs are untrusted). */
 function sanitizeAgentLauncherCommand(raw) {
@@ -360,7 +361,7 @@ function normalizeProviderUsageChecker(value, defaultsValue) {
   if (typeof value.python === "string" && value.python.trim()) out.python = value.python.trim();
   if (typeof value.scriptPath === "string" && value.scriptPath.trim()) out.scriptPath = value.scriptPath.trim();
   if (typeof value.timeoutMs === "number" && Number.isFinite(value.timeoutMs)) {
-    out.timeoutMs = Math.max(TIMECHECKIN_TIMEOUT_MIN, Math.min(TIMECHECKIN_TIMEOUT_MAX, Math.round(value.timeoutMs)));
+    out.timeoutMs = Math.max(PROVIDER_USAGE_TIMEOUT_MIN, Math.min(PROVIDER_USAGE_TIMEOUT_MAX, Math.round(value.timeoutMs)));
   }
   if (typeof value.browser === "string" && ["auto", "firefox", "chrome", "safari"].includes(value.browser)) {
     out.browser = value.browser;

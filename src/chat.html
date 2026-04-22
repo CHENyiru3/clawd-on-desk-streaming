@@ -109,6 +109,11 @@ body { padding: 0; }
   border-bottom: 1px solid var(--card-border);
   flex-shrink: 0;
 }
+.titlebar-brand {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
 .titlebar-title {
   font-size: 12px;
   font-weight: 600;
@@ -147,6 +152,22 @@ body { padding: 0; }
   opacity: 0.3;
   cursor: not-allowed;
 }
+
+/* Hermes status dot */
+.hermes-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #22c55e;
+  display: inline-block;
+  margin-left: 6px;
+  vertical-align: middle;
+  transition: background 0.3s ease;
+}
+.hermes-status-dot[data-status="thinking"],
+.hermes-status-dot[data-status="working"] { background: #f59e0b; }
+.hermes-status-dot[data-status="error"] { background: #ef4444; }
+.hermes-status-dot[data-status="offline"] { background: #9ca3af; }
 
 /* ── DND indicator ── */
 .dnd-indicator {
@@ -348,7 +369,10 @@ body { padding: 0; }
 
   <!-- Title bar -->
   <div class="titlebar">
-    <span class="titlebar-title" id="titleText">Hermes</span>
+    <div class="titlebar-brand">
+      <span class="titlebar-title" id="titleText">Hermes</span>
+      <span class="hermes-status-dot" id="hermesStatusDot" title="Status" data-status="offline"></span>
+    </div>
     <div class="titlebar-actions">
       <button class="titlebar-btn clear-btn" id="btnClear" title="Clear">✕</button>
       <button class="titlebar-btn" id="btnClose" title="Close">×</button>
@@ -405,9 +429,12 @@ const btnClear = document.getElementById("btnClear");
 const btnClose = document.getElementById("btnClose");
 const dndIndicator = document.getElementById("dndIndicator");
 const titleText = document.getElementById("titleText");
+const hermesStatusDot = document.getElementById("hermesStatusDot");
 
 let currentLang = "en";
 let busy = false;
+let dndActive = false;
+let hermesStatus = "offline";
 
 // ── i18n strings ──
 const STRINGS = {
@@ -419,6 +446,8 @@ const STRINGS = {
     thinking: "Thinking…",
     sending: "Sending…",
     dndActive: "Do not disturb — chat paused",
+    hermesOffline: "Hermes is offline — configure the chat command in Settings",
+    hermesError: "Hermes is recovering from an error",
     error: "Error",
   },
   zh: {
@@ -429,6 +458,8 @@ const STRINGS = {
     thinking: "思考中…",
     sending: "发送中…",
     dndActive: "免打扰模式 — 对话已暂停",
+    hermesOffline: "Hermes 离线 — 请先在设置中配置对话命令",
+    hermesError: "Hermes 出错，正在恢复",
     error: "错误",
   },
 };
@@ -445,6 +476,7 @@ function applyLang(lang) {
   emptySub.textContent = t("emptySub");
   thinkingLabel.textContent = t("thinking");
   if (!busy) thinkingRow.classList.remove("visible");
+  updateInputState();
 }
 
 applyLang("en");
@@ -554,14 +586,38 @@ function scrollToBottom() {
 // ── Input handling ──
 function setBusy(state) {
   busy = state;
-  inputField.disabled = state;
-  btnSend.disabled = state;
+  updateInputState();
   thinkingRow.classList.toggle("visible", state);
   if (state) {
     thinkingLabel.textContent = t("sending");
   } else {
     thinkingLabel.textContent = t("thinking");
   }
+}
+
+function updateInputState() {
+  const offline = hermesStatus === "offline";
+  const error = hermesStatus === "error";
+  inputField.disabled = busy || dndActive || offline || error;
+  btnSend.disabled = busy || dndActive || offline || error;
+  if (dndActive) {
+    dndIndicator.textContent = t("dndActive");
+    dndIndicator.classList.add("visible");
+  } else if (offline) {
+    dndIndicator.textContent = t("hermesOffline");
+    dndIndicator.classList.add("visible");
+  } else if (error) {
+    dndIndicator.textContent = t("hermesError");
+    dndIndicator.classList.add("visible");
+  } else {
+    dndIndicator.classList.remove("visible");
+  }
+}
+
+function setHermesStatus(status) {
+  hermesStatus = status || "offline";
+  if (hermesStatusDot) hermesStatusDot.setAttribute("data-status", hermesStatus);
+  updateInputState();
 }
 
 function submitInput() {
@@ -622,6 +678,7 @@ window.chatAPI.onError((msg) => {
   finishStreaming();
   setBusy(false);
   // Show error as last assistant message
+  emptyState.style.display = "none";
   const bubble = document.createElement("div");
   bubble.className = "msg assistant";
   const roleLabel = document.createElement("div");
@@ -651,20 +708,20 @@ window.chatAPI.onHistory((messages) => {
   });
 });
 
-window.chatAPI.onBusy(({ busy: isBusy }) => {
+window.chatAPI.onBusy((isBusy) => {
   setBusy(isBusy);
 });
 
-window.chatAPI.onDnd(({ active }) => {
-  dndIndicator.textContent = t("dndActive");
-  dndIndicator.classList.toggle("visible", active);
-  if (active) {
-    inputField.disabled = true;
-    btnSend.disabled = true;
-  }
+window.chatAPI.onDnd((active) => {
+  dndActive = !!active;
+  updateInputState();
 });
 
-window.chatAPI.onLangChange(({ lang }) => {
+window.chatAPI.onStatus((status) => {
+  setHermesStatus(status);
+});
+
+window.chatAPI.onLangChange((lang) => {
   applyLang(lang);
 });
 

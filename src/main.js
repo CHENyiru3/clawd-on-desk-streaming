@@ -22,10 +22,11 @@ const { runHermesCheckin, formatClockLabel } = require("./hermes-checkin");
 const { sendMessage: runHermesChat, initHistory: initHermesChat, clearHistory: clearHermesChat, getHistory: getHermesHistory } = require("./hermes-chat");
 const initTimeCheckinBubble = require("./time-checkin-bubble");
 const createProviderUsageRuntime = require("./provider-usage-runtime");
-const { createEmptyUsageSnapshot, mergeUsageSnapshot } = require("./provider-usage-model");
+const { createEmptyUsageSnapshot, mergeUsageSnapshot, withHermesStatus } = require("./provider-usage-model");
 const { fetchProviderUsageSnapshots } = require("./provider-usage-fetchers");
 const { buildFallbackSummary } = require("./provider-usage-summary-fallback");
 const { resolveStartupWindowState } = require("./startup-window-state");
+const { computeLeftChatPanelBounds } = require("./chat-panel-layout");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -281,6 +282,7 @@ function getProviderUsageCheckerConfig() {
     scriptPath: cfg.scriptPath || "",
     timeoutMs: cfg.timeoutMs || 30000,
     browser: cfg.browser || "auto",
+    includeMiniMax: !!_settingsController.get("providerUsageMiniMaxEnabled"),
   };
 }
 
@@ -289,6 +291,16 @@ function sendProviderUsageToRenderer() {
     ...providerUsageSnapshot,
     hudEnabled: !!_settingsController.get("providerUsageHudEnabled"),
   });
+}
+
+function updateHermesStatus(status) {
+  providerUsageSnapshot = withHermesStatus(providerUsageSnapshot, status);
+  sendProviderUsageToRenderer();
+  sendChatStatus(status);
+}
+
+function sendChatStatus(status) {
+  sendToChat("chat-status", { status });
 }
 
 function buildTimeCheckinTitle(nowDate) {
@@ -396,7 +408,7 @@ async function fetchAndSummarizeProviderUsage({ reason, now }) {
 
   const staleAfterMs = (_settingsController.get("providerUsageStaleAfterMinutes") || 30) * 60 * 1000;
   const summary = buildFallbackSummary({ providers: fetched.providers }, { staleAfterMs, now: now.getTime() });
-  let resultKind = fetched.lastResult ? "fallback" : "ok";
+  const resultKind = fetched.lastResult ? "fallback" : "ok";
   const lastError = fetched.lastError || null;
 
   providerUsageSnapshot = mergeUsageSnapshot(
@@ -779,249 +791,171 @@ function getObjRect(bounds) {
 
 let win;
 let hitWin;  // input window — small opaque rect over hitbox, receives all pointer events
-let chatPanel = null;  // Hermes chat panel — slides in from left edge
 let tray = null;
+let chatPanel = null;  // Hermes chat panel — opens next to the pet
 let contextMenuOwner = null;
 // Mirror of _settingsController.get("size") — initialized from disk, kept in
-const initBounds = win.getBounds();
-const initHit = getHitRectScreen(initBounds);
-const hx = Math.round(initHit.left), hy = Math.round(initHit.top);
-const hw = Math.round(initHit.right - initHit.left);
-const hh = Math.round(initHit.bottom - initHit.top);
-
-hitWin = new BrowserWindow({
-  width: hw, height: hh, x: hx, y: hy,
-  frame: false,
-  transparent: true,
-  alwaysOnTop: true,
-  resizable: false,
-  skipTaskbar: true,
-  hasShadow: false,
-  fullscreenable: false,
-  enableLargerThanScreen: true,
-  focusable: false,
-  webPreferences: {
-    preload: path.join(__dirname, "preload-hit.js"),
-    backgroundThrottling: false,
-    additionalArguments: [
-      "--hit-theme-config=" + JSON.stringify(themeLoader.getHitRendererConfig()),
-    ],
-  },
-});
-// setShape: native hit region, no per-pixel alpha dependency.
-// hitWin has no visual content — clipping is irrelevant.
-hitWin.setShape([{ x: 0, y: 0, width: hw, height: hh }]);
-hitWin.setIgnoreMouseEvents(false);  // PERMANENT — never toggle
-hitWin.setFocusable(false);
-hitWin.showInactive();
-// macOS: apply after showInactive() — it resets NSWindowCollectionBehavior
-reapplyMacVisibility();
-hitWin.loadFile(path.join(__dirname, "hit.html"));
-
-// Event-level safety net for position sync
-const syncFloatingWindows = () => {
-  syncHitWin();
-  if (bubbleFollowPet) repositionFloatingBubbles();
-  else repositionUpdateBubble();
-};
-win.on("move", syncFloatingWindows);
-win.on("resize", syncFloatingWindows);
-
-// Send initial state to hitWin once it's ready
-hitWin.webContents.on("did-finish-load", () => {
-  sendToHitWin("theme-config", themeLoader.getHitRendererConfig());
-  if (themeReloadInProgress) return;
-  syncHitStateAfterLoad();
-});
-
-// Crash recovery for hitWin
-hitWin.webContents.on("render-process-gone", (_event, details) => {
-  console.error("hitWin renderer crashed:", details.reason);
-  if (!hitWin.isDestroyed()) hitWin.webContents.reload();
-});
-
-  // ── Hermes Chat Panel ──
-  const CHAT_WIDTH = 280;
-  const CHAT_HEIGHT = 400;
-
-  function getPrimaryWorkAreaSafe() {
-    try { return screen.getPrimaryDisplay().workArea; } catch { return null; }
-  }
-
-  function openChatPanel() {
-    if (chatPanel && !chatPanel.isDestroyed()) {
-      chatPanel.show();
-      chatPanel.focus();
-      return;
-    }
-    const wa = getPrimaryWorkAreaSafe() || { x: 0, y: 0, width: 1280, height: 800 };
-    const centerY = Math.round(wa.y + wa.height / 2 - CHAT_HEIGHT / 2);
-    const startX = wa.x - CHAT_WIDTH; // off-screen to the left
-
-    chatPanel = new BrowserWindow({
-      width: CHAT_WIDTH,
-      height: CHAT_HEIGHT,
-      x: startX,
-      y: centerY,
-      frame: false,
-      transparent: true,
-      alwaysOnTop: true,
-      resizable: false,
-      skipTaskbar: true,
-      hasShadow: false,
-      focusable: true,
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "preload-chat.js"),
-        nodeIntegration: false,
-        contextIsolation: true,
-        backgroundThrottling: false,
-      },
-    });
-
-    chatPanel.setIgnoreMouseEvents(false);
-    chatPanel.loadFile(path.join(__dirname, "chat.html"));
-
-    // Slide in from left after load
-    chatPanel.webContents.once("did-finish-load", () => {
-      const wa2 = getPrimaryWorkAreaSafe() || { x: 0, y: 0, width: 1280, height: 800 };
-      const cy = Math.round(wa2.y + wa2.height / 2 - CHAT_HEIGHT / 2);
-      chatPanel.setPosition(wa2.x, cy);
-      chatPanel.show();
-      chatPanel.focus();
-      // Send conversation history
-      sendChatHistory();
-      // Send DND state
-      sendToChat("chat-dnd", { active: _settingsController.get("doNotDisturb") || false });
-    });
-
-    chatPanel.on("closed", () => {
-      chatPanel = null;
-    });
-
-    chatPanel.on("blur", () => {
-      // Optionally close on blur — uncomment to auto-close when user clicks away:
-      // closeChatPanel();
-    });
-  }
-
-  function closeChatPanel() {
-    if (!chatPanel || chatPanel.isDestroyed()) return;
-    chatPanel.close();
-  }
-
-  function sendChatHistory() {
-    const history = getHermesHistory();
-    // Filter to user + assistant messages (strip internal metadata for IPC)
-    const msgs = history
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, content: m.content }));
-    sendToChat("chat-history", msgs);
-  }
-
-  ipcMain.on("show-context-menu", showPetContextMenu);
-
-  ipcMain.on("move-window-by", (event, dx, dy) => {
-    if (_mini.getMiniMode() || _mini.getMiniTransitioning()) return;
-    const { x, y } = win.getBounds();
-    const size = getCurrentPixelSize();
-    const renderSize = getRenderWindowSize(size);
-    // During drag: allow free movement across screens, only prevent
-    // the pet from going completely off-screen (keep 25% visible).
-    const newX = x + dx, newY = y + dy;
-    const looseClamped = looseClampToDisplays(newX, newY, renderSize.width, renderSize.height);
-    win.setBounds({ ...looseClamped, width: renderSize.width, height: renderSize.height });
-    syncHitWin();
-    if (bubbleFollowPet) repositionFloatingBubbles();
-  });
-
-  // ── Hermes Chat helpers ──
-  let hermesChatBusy = false;
-
-  // Hermes session states → visual pet states
-  const HERMES_SESSION_ID = "hermes";
-
-  function setHermesVisualState(visualState) {
-    if (!win || win.isDestroyed()) return;
-    // Upsert hermes pseudo-session in the sessions Map so state.js respects it
-    _state.sessions.set(HERMES_SESSION_ID, {
-      state: visualState,
-      updatedAt: Date.now(),
-      displayHint: null,
-      sourcePid: null,
-      cwd: "",
-      editor: null,
-      pidChain: null,
-      agentPid: null,
-      agentId: "hermes",
-      host: null,
-      headless: false,
-      pidReachable: false,
-      resumeState: null,
-    });
-    // Ask the state machine to recompute display state
-    // We call setState with the hermes state directly; if an external agent
-    // has higher priority (e.g. error=9 > working=4), it will win naturally.
-    _state.setState(visualState);
-  }
-
-  // ── Hermes Chat IPC ──
-  ipcMain.on("chat-open", () => openChatPanel());
-  ipcMain.on("chat-close", () => closeChatPanel());
-  ipcMain.on("chat-clear", () => {
-    clearHermesChat();
-    // Broadcast empty history to any open chat panel
-    sendToChat("chat-history", []);
-  });
-  ipcMain.on("chat-send", (event, { text }) => {
-    if (hermesChatBusy) return;
-    if (!text || !text.trim()) return;
-    if (_settingsController.get("doNotDisturb")) {
-      sendToChat("chat-error", "Do not disturb mode is active.");
-      return;
-    }
-
-    hermesChatBusy = true;
-    sendToChat("chat-busy", { busy: true });
-
-    // Instant state: thinking
-    setHermesVisualState("thinking");
-
-    const config = _settingsController.get("hermesChat") || {};
-
-    runHermesChat({
-      text: text.trim(),
-      config,
-      onToken(chunk, isFirst) {
-        sendToChat("chat-token", { chunk, isFirst, isLast: false });
-        // First token → switch to working so juggling/typing shows
-        if (isFirst) {
-          setHermesVisualState("working");
-        }
-      },
-      onComplete(ok, message, code) {
-        hermesChatBusy = false;
-        sendToChat("chat-busy", { busy: false });
-
-        if (ok) {
-          // Signal end of stream
-          sendToChat("chat-token", { chunk: "", isFirst: false, isLast: true });
-          // attention is ONESHOT → auto-returns to idle after ~4s
-          setHermesVisualState("attention");
-          // Play completion sound
-          const muted = _settingsController.get("soundMuted");
-          if (!muted && !_settingsController.get("doNotDisturb")) {
-            try { ctx.playSound && ctx.playSound("complete"); } catch {}
-          }
-        } else {
-          setHermesVisualState("error");
-          sendToChat("chat-error", message || `Hermes error (${code})`);
-        }
-      },
-    });
-  });
 // sync by the settings subscriber. The legacy S/M/L → P:N migration runs
 // inside createWindow() because it needs the screen API.
+// ── Hermes Chat Panel ──
+const CHAT_WIDTH = 240;
+const CHAT_HEIGHT = 340;
+const CHAT_PET_GAP = 8;
+
+function getPrimaryWorkAreaSafe() {
+  try { return screen.getPrimaryDisplay().workArea; } catch { return null; }
+}
+
+function getChatPanelBounds() {
+  const fallbackWa = getPrimaryWorkAreaSafe() || { x: 0, y: 0, width: 1280, height: 800 };
+  if (!win || win.isDestroyed()) {
+    return {
+      x: fallbackWa.x,
+      y: Math.round(fallbackWa.y + fallbackWa.height / 2 - CHAT_HEIGHT / 2),
+      width: CHAT_WIDTH,
+      height: CHAT_HEIGHT,
+    };
+  }
+
+  const renderBounds = win.getBounds();
+  const petBounds = getPetStageBounds(renderBounds);
+  const petCenterX = petBounds.x + petBounds.width / 2;
+  const petCenterY = petBounds.y + petBounds.height / 2;
+  const wa = getNearestWorkArea(petCenterX, petCenterY) || fallbackWa;
+
+  return computeLeftChatPanelBounds({
+    petBounds,
+    workArea: wa,
+    chatWidth: CHAT_WIDTH,
+    chatHeight: CHAT_HEIGHT,
+    gap: CHAT_PET_GAP,
+  });
+}
+
+function positionChatPanel() {
+  if (!chatPanel || chatPanel.isDestroyed()) return;
+  chatPanel.setBounds(getChatPanelBounds());
+}
+
+function openChatPanel() {
+  const hermesConfig = _settingsController.get("hermesChat") || {};
+  const hermesConfigured = !!(hermesConfig.command && hermesConfig.command.trim());
+  if (!hermesConfigured) updateHermesStatus("offline");
+
+  if (chatPanel && !chatPanel.isDestroyed()) {
+    positionChatPanel();
+    chatPanel.show();
+    chatPanel.focus();
+    sendChatBootstrap();
+    return;
+  }
+  const initialBounds = getChatPanelBounds();
+
+  chatPanel = new BrowserWindow({
+    width: CHAT_WIDTH,
+    height: CHAT_HEIGHT,
+    x: initialBounds.x,
+    y: initialBounds.y,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    hasShadow: false,
+    focusable: true,
+    show: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload-chat.js"),
+      nodeIntegration: false,
+      contextIsolation: true,
+      backgroundThrottling: false,
+    },
+  });
+
+  chatPanel.setIgnoreMouseEvents(false);
+  chatPanel.loadFile(path.join(__dirname, "chat.html"));
+
+  chatPanel.webContents.once("did-finish-load", () => {
+    positionChatPanel();
+    chatPanel.show();
+    chatPanel.focus();
+    sendChatBootstrap();
+  });
+
+  chatPanel.on("closed", () => {
+    chatPanel = null;
+    hermesChatBusy = false;
+    const hc = _settingsController.get("hermesChat") || {};
+    updateHermesStatus(hc.command && hc.command.trim() ? "available" : "offline");
+  });
+
+  chatPanel.on("blur", () => {
+    // Optionally close on blur — uncomment to auto-close when user clicks away
+    // closeChatPanel();
+  });
+}
+
+function closeChatPanel() {
+  if (!chatPanel || chatPanel.isDestroyed()) return;
+  chatPanel.close();
+}
+
+function sendChatHistory() {
+  const history = getHermesHistory();
+  // Filter to user + assistant messages (strip internal metadata for IPC)
+  const msgs = history
+    .filter((m) => m.role === "user" || m.role === "assistant")
+    .map((m) => ({ role: m.role, content: m.content }));
+  sendToChat("chat-history", msgs);
+}
+
+function getHermesStatus() {
+  return (providerUsageSnapshot && providerUsageSnapshot.hermesStatus && providerUsageSnapshot.hermesStatus.status) || "offline";
+}
+
+function sendChatBootstrap() {
+  sendChatHistory();
+  sendToChat("chat-dnd", { active: !!doNotDisturb });
+  sendToChat("chat-lang-change", { lang: getUiLang() });
+  sendToChat("chat-busy", { busy: hermesChatBusy });
+  sendChatStatus(getHermesStatus());
+}
+
+// Hermes chat state — module level
+let hermesChatBusy = false;
+const HERMES_SESSION_ID = "hermes";
+
+function setHermesVisualState(visualState) {
+  if (!win || win.isDestroyed()) return;
+  // Upsert hermes pseudo-session in the sessions Map so state.js respects it
+  _state.sessions.set(HERMES_SESSION_ID, {
+    state: visualState,
+    updatedAt: Date.now(),
+    displayHint: null,
+    sourcePid: null,
+    cwd: "",
+    editor: null,
+    pidChain: null,
+    agentPid: null,
+    agentId: "hermes",
+    host: null,
+    headless: false,
+    pidReachable: false,
+    resumeState: null,
+  });
+  // Ask the state machine to recompute display state
+  // We call setState with the hermes state directly; if an external agent
+  // has higher priority (e.g. error=9 > working=4), it will win naturally
+  _state.setState(visualState);
+  // Update Hermes HUD status
+  if (visualState === "thinking" || visualState === "working") {
+    updateHermesStatus(visualState);
+  } else if (visualState === "error") {
+    updateHermesStatus("error");
+  } else {
+    updateHermesStatus("available");
+  }
+}
+
 let currentSize = _settingsController.get("size");
 
 // ── Proportional size mode ──
@@ -1068,6 +1002,12 @@ function getPetStageBounds(bounds) {
 let contextMenu;
 let doNotDisturb = false;
 let isQuitting = false;
+
+function setDoNotDisturbValue(value) {
+  doNotDisturb = !!value;
+  sendToChat("chat-dnd", { active: doNotDisturb });
+}
+
 // Mirror caches — kept in sync with the settings store via the subscriber
 // in wireSettingsSubscribers() further down. Read freely; never assign
 // directly (writes go through ctx setters → controller.applyUpdate).
@@ -1144,6 +1084,96 @@ function sendToRenderer(channel, ...args) {
 function sendToHitWin(channel, ...args) {
   if (hitWin && !hitWin.isDestroyed()) hitWin.webContents.send(channel, ...args);
 }
+
+// ── Hermes Chat IPC ──
+ipcMain.on("open-chat-panel", () => openChatPanel());
+ipcMain.on("chat-open", () => openChatPanel());
+ipcMain.on("chat-close", () => closeChatPanel());
+ipcMain.on("chat-clear", () => {
+  clearHermesChat();
+  // Broadcast empty history to any open chat panel
+  sendToChat("chat-history", []);
+});
+ipcMain.on("chat-send", (event, { text }) => {
+  if (hermesChatBusy) return;
+  if (!text || !text.trim()) return;
+  const config = _settingsController.get("hermesChat") || {};
+  if (!config.command || !config.command.trim()) {
+    updateHermesStatus("offline");
+    sendToChat("chat-error", "Hermes chat command is not configured.");
+    return;
+  }
+  if (doNotDisturb) {
+    sendToChat("chat-error", "Do not disturb mode is active.");
+    return;
+  }
+
+  hermesChatBusy = true;
+  sendToChat("chat-busy", { busy: true });
+
+  // Instant state: thinking
+  setHermesVisualState("thinking");
+
+  runHermesChat({
+    text: text.trim(),
+    config,
+    onToken(chunk, isFirst) {
+      sendToChat("chat-token", { chunk, isFirst, isLast: false });
+      // First token → switch to working so juggling/typing shows
+      if (isFirst) {
+        updateHermesStatus("working");
+        setHermesVisualState("working");
+      }
+    },
+    onComplete(ok, message, code) {
+      hermesChatBusy = false;
+      sendToChat("chat-busy", { busy: false });
+
+      if (ok) {
+        // Signal end of stream
+        sendToChat("chat-token", { chunk: "", isFirst: false, isLast: true });
+        // attention is ONESHOT → auto-returns to idle after ~4s
+        // Update session to idle immediately so auto-return resolves to idle
+        // (without this, the session would still show "attention" and re-apply)
+        _state.sessions.set(HERMES_SESSION_ID, {
+          state: "idle",
+          updatedAt: Date.now(),
+          displayHint: null,
+          sourcePid: null,
+          cwd: "",
+          editor: null,
+          pidChain: null,
+          agentPid: null,
+          agentId: "hermes",
+          host: null,
+          headless: false,
+          pidReachable: false,
+          resumeState: null,
+        });
+        // Session is idle → auto-return will resolve to idle
+        // But we still want to show the "attention" (celebration) state once
+        // So we call setState directly (bypasses session update) to show celebration
+        _state.setState("attention");
+        updateHermesStatus("available");
+        // Play completion sound
+        const muted = _settingsController.get("soundMuted");
+        if (!muted && !doNotDisturb) {
+          try { playSound && playSound("complete"); } catch {}
+        }
+      } else {
+        updateHermesStatus("error");
+        setHermesVisualState("error");
+        sendToChat("chat-error", message || `Hermes error (${code})`);
+        // Auto-return to available after error display
+        setTimeout(() => {
+          updateHermesStatus("available");
+          setHermesVisualState("idle");
+        }, 3500);
+      }
+    },
+  });
+});
+
 function sendToChat(channel, ...args) {
   if (chatPanel && !chatPanel.isDestroyed()) chatPanel.webContents.send(channel, ...args);
 }
@@ -1739,7 +1769,7 @@ const _stateCtx = {
   get win() { return win; },
   get hitWin() { return hitWin; },
   get doNotDisturb() { return doNotDisturb; },
-  set doNotDisturb(v) { doNotDisturb = v; sendToChat("chat-dnd", { active: doNotDisturb }); },
+  set doNotDisturb(v) { setDoNotDisturbValue(v); },
   get miniMode() { return _mini.getMiniMode(); },
   get miniTransitioning() { return _mini.getMiniTransitioning(); },
   get mouseOverPet() { return mouseOverPet; },
@@ -1954,7 +1984,7 @@ _providerUsageRuntime = createProviderUsageRuntime({
   summarizeSnapshots: async ({ snapshot, reason, now }) => {
     const staleAfterMs = (_settingsController.get("providerUsageStaleAfterMinutes") || 30) * 60 * 1000;
     const summary = buildFallbackSummary({ providers: snapshot.providers }, { staleAfterMs, now: now.getTime() });
-    const lastResult = snapshot.lastResult ? "fallback" : "ok";
+    const lastResult = snapshot.lastResult || "ok";
     const lastError = snapshot.lastError || null;
     const mergedSnapshot = mergeUsageSnapshot(providerUsageSnapshot, snapshot.providers, summary, now.getTime());
     return {
@@ -1963,7 +1993,7 @@ _providerUsageRuntime = createProviderUsageRuntime({
       lastError,
     };
   },
-  shouldDefer: () => hermesWorkflowBusy,
+  shouldDefer: () => false,
   onUsageUpdate: (snapshot) => {
     providerUsageSnapshot = snapshot;
     sendProviderUsageToRenderer();
@@ -1979,9 +2009,7 @@ _providerUsageRuntime = createProviderUsageRuntime({
       lastRunAt: runtimeStatus.lastRunAt || providerUsageStatus.lastRunAt,
       lastResult: runtimeStatus.lastResult || providerUsageStatus.lastResult,
       lastError: runtimeStatus.lastError || providerUsageStatus.lastError,
-      lastSummary: providerUsageSnapshot && providerUsageSnapshot.hermesSummary
-        ? providerUsageSnapshot.hermesSummary.summaryText
-        : providerUsageStatus.lastSummary,
+      lastSummary: (providerUsageSnapshot && providerUsageSnapshot.summary && providerUsageSnapshot.summary.summaryText) || providerUsageStatus.lastSummary,
     };
     broadcastSettingsSnapshot();
   },
@@ -2153,7 +2181,7 @@ function wireSettingsSubscribers() {
     // 1. Update mirror caches first so any side-effect handler reads fresh values.
     if ("lang" in changes) {
       lang = changes.lang;
-      sendToChat("chat-lang-change", { lang });
+      sendToChat("chat-lang-change", { lang: getUiLang() });
     }
     if ("size" in changes) currentSize = changes.size;
     if ("showTray" in changes) {
@@ -2244,6 +2272,11 @@ function wireSettingsSubscribers() {
       } catch (err) {
         console.warn("Clawd: provider usage sync failed:", err && err.message);
       }
+    }
+    if ("hermesChat" in changes) {
+      const hc = changes.hermesChat || {};
+      updateHermesStatus(hc.command && hc.command.trim() ? "available" : "offline");
+      sendChatBootstrap();
     }
 
     if ("agentLauncher" in changes) {
@@ -3126,6 +3159,7 @@ function createWindow() {
     // Event-level safety net for position sync
     const syncFloatingWindows = () => {
       syncHitWin();
+      positionChatPanel();
       if (bubbleFollowPet) repositionFloatingBubbles();
       else repositionUpdateBubble();
     };
@@ -3146,85 +3180,6 @@ function createWindow() {
     });
   }
 
-  // ── Hermes Chat Panel ──
-  const CHAT_WIDTH = 280;
-  const CHAT_HEIGHT = 400;
-
-  function getPrimaryWorkAreaSafe() {
-    try { return screen.getPrimaryDisplay().workArea; } catch { return null; }
-  }
-
-  function openChatPanel() {
-    if (chatPanel && !chatPanel.isDestroyed()) {
-      chatPanel.show();
-      chatPanel.focus();
-      return;
-    }
-    const wa = getPrimaryWorkAreaSafe() || { x: 0, y: 0, width: 1280, height: 800 };
-    const centerY = Math.round(wa.y + wa.height / 2 - CHAT_HEIGHT / 2);
-    const startX = wa.x - CHAT_WIDTH; // off-screen to the left
-
-    chatPanel = new BrowserWindow({
-      width: CHAT_WIDTH,
-      height: CHAT_HEIGHT,
-      x: startX,
-      y: centerY,
-      frame: false,
-      transparent: true,
-      alwaysOnTop: true,
-      resizable: false,
-      skipTaskbar: true,
-      hasShadow: false,
-      focusable: true,
-      show: false,
-      webPreferences: {
-        preload: path.join(__dirname, "preload-chat.js"),
-        nodeIntegration: false,
-        contextIsolation: true,
-        backgroundThrottling: false,
-      },
-    });
-
-    chatPanel.setIgnoreMouseEvents(false);
-    chatPanel.loadFile(path.join(__dirname, "chat.html"));
-
-    // Slide in from left after load
-    chatPanel.webContents.once("did-finish-load", () => {
-      const wa2 = getPrimaryWorkAreaSafe() || { x: 0, y: 0, width: 1280, height: 800 };
-      const cy = Math.round(wa2.y + wa2.height / 2 - CHAT_HEIGHT / 2);
-      chatPanel.setPosition(wa2.x, cy);
-      chatPanel.show();
-      chatPanel.focus();
-      // Send conversation history
-      sendChatHistory();
-      // Send DND state
-      sendToChat("chat-dnd", { active: _settingsController.get("doNotDisturb") || false });
-    });
-
-    chatPanel.on("closed", () => {
-      chatPanel = null;
-    });
-
-    chatPanel.on("blur", () => {
-      // Optionally close on blur — uncomment to auto-close when user clicks away:
-      // closeChatPanel();
-    });
-  }
-
-  function closeChatPanel() {
-    if (!chatPanel || chatPanel.isDestroyed()) return;
-    chatPanel.close();
-  }
-
-  function sendChatHistory() {
-    const history = getHermesHistory();
-    // Filter to user + assistant messages (strip internal metadata for IPC)
-    const msgs = history
-      .filter((m) => m.role === "user" || m.role === "assistant")
-      .map((m) => ({ role: m.role, content: m.content }));
-    sendToChat("chat-history", msgs);
-  }
-
   ipcMain.on("show-context-menu", showPetContextMenu);
 
   ipcMain.on("move-window-by", (event, dx, dy) => {
@@ -3239,92 +3194,6 @@ function createWindow() {
     win.setBounds({ ...looseClamped, width: renderSize.width, height: renderSize.height });
     syncHitWin();
     if (bubbleFollowPet) repositionFloatingBubbles();
-  });
-
-  // ── Hermes Chat helpers ──
-  let hermesChatBusy = false;
-
-  // Hermes session states → visual pet states
-  const HERMES_SESSION_ID = "hermes";
-
-  function setHermesVisualState(visualState) {
-    if (!win || win.isDestroyed()) return;
-    // Upsert hermes pseudo-session in the sessions Map so state.js respects it
-    _state.sessions.set(HERMES_SESSION_ID, {
-      state: visualState,
-      updatedAt: Date.now(),
-      displayHint: null,
-      sourcePid: null,
-      cwd: "",
-      editor: null,
-      pidChain: null,
-      agentPid: null,
-      agentId: "hermes",
-      host: null,
-      headless: false,
-      pidReachable: false,
-      resumeState: null,
-    });
-    // Ask the state machine to recompute display state
-    // We call setState with the hermes state directly; if an external agent
-    // has higher priority (e.g. error=9 > working=4), it will win naturally.
-    _state.setState(visualState);
-  }
-
-  // ── Hermes Chat IPC ──
-  ipcMain.on("chat-open", () => openChatPanel());
-  ipcMain.on("chat-close", () => closeChatPanel());
-  ipcMain.on("chat-clear", () => {
-    clearHermesChat();
-    // Broadcast empty history to any open chat panel
-    sendToChat("chat-history", []);
-  });
-  ipcMain.on("chat-send", (event, { text }) => {
-    if (hermesChatBusy) return;
-    if (!text || !text.trim()) return;
-    if (_settingsController.get("doNotDisturb")) {
-      sendToChat("chat-error", "Do not disturb mode is active.");
-      return;
-    }
-
-    hermesChatBusy = true;
-    sendToChat("chat-busy", { busy: true });
-
-    // Instant state: thinking
-    setHermesVisualState("thinking");
-
-    const config = _settingsController.get("hermesChat") || {};
-
-    runHermesChat({
-      text: text.trim(),
-      config,
-      onToken(chunk, isFirst) {
-        sendToChat("chat-token", { chunk, isFirst, isLast: false });
-        // First token → switch to working so juggling/typing shows
-        if (isFirst) {
-          setHermesVisualState("working");
-        }
-      },
-      onComplete(ok, message, code) {
-        hermesChatBusy = false;
-        sendToChat("chat-busy", { busy: false });
-
-        if (ok) {
-          // Signal end of stream
-          sendToChat("chat-token", { chunk: "", isFirst: false, isLast: true });
-          // attention is ONESHOT → auto-returns to idle after ~4s
-          setHermesVisualState("attention");
-          // Play completion sound
-          const muted = _settingsController.get("soundMuted");
-          if (!muted && !_settingsController.get("doNotDisturb")) {
-            try { ctx.playSound && ctx.playSound("complete"); } catch {}
-          }
-        } else {
-          setHermesVisualState("error");
-          sendToChat("chat-error", message || `Hermes error (${code})`);
-        }
-      },
-    });
   });
 
   ipcMain.on("pause-cursor-polling", () => { idlePaused = true; });
@@ -3502,7 +3371,7 @@ const _miniCtx = {
   get win() { return win; },
   get currentSize() { return currentSize; },
   get doNotDisturb() { return doNotDisturb; },
-  set doNotDisturb(v) { doNotDisturb = v; sendToChat("chat-dnd", { active: doNotDisturb }); },
+  set doNotDisturb(v) { setDoNotDisturbValue(v); },
   SIZES,
   getCurrentPixelSize,
   isProportionalMode,
@@ -3664,7 +3533,6 @@ function installTerminalFocusExtension() {
 
   const targets = [
     path.join(home, ".vscode", "extensions"),
-    path.join(home, ".cursor", "extensions"),
   ];
 
   const filesToCopy = ["package.json", "extension.js"];
@@ -3687,7 +3555,7 @@ function installTerminalFocusExtension() {
     }
   }
   if (installed > 0) {
-    console.log(`Clawd: terminal-focus extension installed to ${installed} editor(s). Restart VS Code/Cursor to activate.`);
+    console.log(`Clawd: terminal-focus extension installed to ${installed} editor(s). Restart VS Code to activate.`);
   }
 }
 
@@ -3721,6 +3589,9 @@ if (!gotTheLock) {
     sessionDebugLog = path.join(app.getPath("userData"), "session-debug.log");
     createWindow();
     initHermesChat(app.getPath("userData"));
+    // Set initial Hermes HUD status based on whether Hermes is configured
+    const hermesConfig = _settingsController.get("hermesChat") || {};
+    updateHermesStatus(hermesConfig.command ? "available" : "offline");
     syncMacTypingMonitorFromPrefs();
     syncGlobalActivityFromPrefs();
     syncTimeCheckinFromPrefs();

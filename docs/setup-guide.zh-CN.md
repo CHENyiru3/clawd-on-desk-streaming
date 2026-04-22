@@ -102,9 +102,6 @@ node hooks/install.js
 # 并自动创建一个 clawd agent
 node hooks/kiro-install.js
 
-# Cursor Agent
-node hooks/cursor-install.js
-
 # Gemini CLI
 node hooks/gemini-install.js
 

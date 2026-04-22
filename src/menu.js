@@ -189,6 +189,11 @@ module.exports = function initMenu(ctx) {
       },
       { type: "separator" },
       {
+        label: t("chatWithHermes"),
+        click: () => ctx.openChatPanel && ctx.openChatPanel(),
+      },
+      { type: "separator" },
+      {
         label: t("diagnostics"),
         submenu: buildDiagnosticsSubmenu(),
       },

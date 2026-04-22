@@ -5,13 +5,12 @@ const registry = require("../agents/registry");
 describe("Agent Registry", () => {
   it("should return all seven agents", () => {
     const agents = registry.getAllAgents();
-    assert.strictEqual(agents.length, 8);
+    assert.strictEqual(agents.length, 7);
     const ids = agents.map((a) => a.id);
     assert.ok(ids.includes("claude-code"));
     assert.ok(ids.includes("codex"));
     assert.ok(ids.includes("copilot-cli"));
     assert.ok(ids.includes("gemini-cli"));
-    assert.ok(ids.includes("cursor-agent"));
     assert.ok(ids.includes("codebuddy"));
     assert.ok(ids.includes("kiro-cli"));
     assert.ok(ids.includes("opencode"));
@@ -22,7 +21,6 @@ describe("Agent Registry", () => {
     assert.strictEqual(registry.getAgent("codex").name, "Codex CLI");
     assert.strictEqual(registry.getAgent("copilot-cli").name, "Copilot CLI");
     assert.strictEqual(registry.getAgent("gemini-cli").name, "Gemini CLI");
-    assert.strictEqual(registry.getAgent("cursor-agent").name, "Cursor Agent");
     assert.strictEqual(registry.getAgent("codebuddy").name, "CodeBuddy");
     assert.strictEqual(registry.getAgent("kiro-cli").name, "Kiro CLI");
     assert.strictEqual(registry.getAgent("nonexistent"), undefined);
@@ -38,7 +36,6 @@ describe("Agent Registry", () => {
     assert.ok(agentIds.includes("codex"));
     assert.ok(agentIds.includes("copilot-cli"));
     assert.ok(agentIds.includes("gemini-cli"));
-    assert.ok(agentIds.includes("cursor-agent"));
     assert.ok(agentIds.includes("kiro-cli"));
   });
 
@@ -67,12 +64,6 @@ describe("Agent Registry", () => {
     assert.strictEqual(gemini.capabilities.sessionEnd, true);
     assert.strictEqual(gemini.capabilities.subagent, false);
 
-    const cursor = registry.getAgent("cursor-agent");
-    assert.strictEqual(cursor.capabilities.httpHook, false);
-    assert.strictEqual(cursor.capabilities.permissionApproval, false);
-    assert.strictEqual(cursor.capabilities.sessionEnd, true);
-    assert.strictEqual(cursor.capabilities.subagent, true);
-
     const kiro = registry.getAgent("kiro-cli");
     assert.strictEqual(kiro.capabilities.httpHook, false);
     assert.strictEqual(kiro.capabilities.permissionApproval, false);
@@ -95,12 +86,6 @@ describe("Agent Registry", () => {
     assert.strictEqual(gemini.eventMap.SessionStart, "idle");
     assert.strictEqual(gemini.eventMap.BeforeTool, "working");
     assert.strictEqual(gemini.eventMap.AfterAgent, "attention");
-
-    const cursor = registry.getAgent("cursor-agent");
-    assert.strictEqual(cursor.eventMap.sessionStart, "idle");
-    assert.strictEqual(cursor.eventMap.preToolUse, "working");
-    assert.strictEqual(cursor.eventMap.afterAgentThought, "thinking");
-    assert.strictEqual(cursor.eventMap.stop, "attention");
   });
 
   it("should have logEventMap for poll-based agents", () => {

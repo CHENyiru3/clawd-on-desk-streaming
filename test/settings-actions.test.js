@@ -220,6 +220,22 @@ describe("updateRegistry pure-data validators", () => {
     assert.strictEqual(updateRegistry.themeOverrides({}, deps).status, "ok");
     assert.strictEqual(updateRegistry.themeOverrides("nope", deps).status, "error");
   });
+
+  it("provider usage checker allows five-minute MiniMax checks", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.providerUsageChecker({
+      python: "python3",
+      scriptPath: "/tmp/check_usage.py",
+      timeoutMs: 300000,
+      browser: "auto",
+    }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.providerUsageChecker({
+      python: "python3",
+      scriptPath: "/tmp/check_usage.py",
+      timeoutMs: 300001,
+      browser: "auto",
+    }, deps).status, "error");
+  });
 });
 
 describe("object-form effects (autoStartWithClaude / manageClaudeHooksAutomatically / openAtLogin)", () => {

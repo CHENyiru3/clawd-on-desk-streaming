@@ -134,19 +134,6 @@ function syncKiroHooks() {
   }
 }
 
-function syncCursorHooks() {
-  try {
-    if (typeof ctx.syncCursorHooksImpl === "function") return ctx.syncCursorHooksImpl();
-    const { registerCursorHooks } = require("../hooks/cursor-install.js");
-    const { added, updated } = registerCursorHooks({ silent: true });
-    if (added > 0 || updated > 0) {
-      console.log(`Clawd: synced Cursor hooks (added ${added}, updated ${updated})`);
-    }
-  } catch (err) {
-    console.warn("Clawd: failed to sync Cursor hooks:", err.message);
-  }
-}
-
 function syncOpencodePlugin() {
   try {
     if (typeof ctx.syncOpencodePluginImpl === "function") return ctx.syncOpencodePluginImpl();
@@ -644,7 +631,6 @@ function startHttpServer() {
         startClaudeSettingsWatcher();
       }
       syncGeminiHooks();
-      syncCursorHooks();
       syncCodeBuddyHooks();
       syncKiroHooks();
       syncOpencodePlugin();
@@ -665,7 +651,6 @@ return {
   getHookServerPort,
   syncClawdHooks,
   syncGeminiHooks,
-  syncCursorHooks,
   syncCodeBuddyHooks,
   syncKiroHooks,
   syncOpencodePlugin,

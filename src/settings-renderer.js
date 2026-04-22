@@ -250,7 +250,6 @@ const STRINGS = {
     animOverridesSectionInterrupts: "Interrupts",
     animOverridesSectionSleep: "Sleep",
     animOverridesSectionMini: "Mini Mode",
-    animOverridesSectionIdleTracked: "Cursor-follow idle",
     animOverridesSectionIdleAnimated: "Idle random pool",
     animOverridesSectionIdleStatic: "Single static idle",
     animOverridesSectionSleepFull: "Full sleep sequence",
@@ -498,7 +497,6 @@ const STRINGS = {
     animOverridesSectionInterrupts: "打扰态",
     animOverridesSectionSleep: "睡眠",
     animOverridesSectionMini: "Mini Mode",
-    animOverridesSectionIdleTracked: "跟随鼠标的 idle",
     animOverridesSectionIdleAnimated: "idle 随机池",
     animOverridesSectionIdleStatic: "单张静态 idle",
     animOverridesSectionSleepFull: "完整睡眠序列",
@@ -1164,7 +1162,6 @@ function getAnimOverrideSectionTitle(section) {
 function getAnimOverrideSectionSubtitle(section) {
   if (!section) return "";
   if (section.id === "idle") {
-    if (section.mode === "tracked") return t("animOverridesSectionIdleTracked");
     if (section.mode === "animated") return t("animOverridesSectionIdleAnimated");
     if (section.mode === "static") return t("animOverridesSectionIdleStatic");
   }

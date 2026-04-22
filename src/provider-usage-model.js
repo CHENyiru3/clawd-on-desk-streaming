@@ -111,6 +111,9 @@ function createEmptyUsageSnapshot() {
       summaryText: null,
       providerHints: {},
     },
+    hermesStatus: {
+      status: "offline",
+    },
   };
 }
 
@@ -220,6 +223,28 @@ function mergeUsageSnapshot(baseSnapshot, providerGroups, hermesSummary, fetched
         : {},
     };
   }
+  if (baseSnapshot && baseSnapshot.hermesStatus && typeof baseSnapshot.hermesStatus === "object") {
+    snapshot.hermesStatus = { ...baseSnapshot.hermesStatus };
+  }
+  return snapshot;
+}
+
+function withHermesStatus(baseSnapshot, status) {
+  const snapshot = baseSnapshot && typeof baseSnapshot === "object"
+    ? {
+        ...baseSnapshot,
+        providers: baseSnapshot.providers ? { ...baseSnapshot.providers } : {},
+        hermesSummary: baseSnapshot.hermesSummary && typeof baseSnapshot.hermesSummary === "object"
+          ? {
+              ...baseSnapshot.hermesSummary,
+              providerHints: {
+                ...((baseSnapshot.hermesSummary && baseSnapshot.hermesSummary.providerHints) || {}),
+              },
+            }
+          : undefined,
+      }
+    : createEmptyUsageSnapshot();
+  snapshot.hermesStatus = { status: status || "offline" };
   return snapshot;
 }
 
@@ -234,6 +259,7 @@ module.exports = {
   markProviderGroupStale,
   normalizeUsageSnapshot,
   mergeUsageSnapshot,
+  withHermesStatus,
   providerLabel,
   statusFromRemaining,
 };

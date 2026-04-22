@@ -50,7 +50,7 @@ describe("getPlatformConfig()", () => {
 
   it("returns defaults when no options given", () => {
     const cfg = getPlatformConfig();
-    assert.ok(cfg.editorPathChecks.length === 2); // visual studio code + cursor.app
+    assert.ok(cfg.editorPathChecks.length === 1); // visual studio code only
   });
 });
 

@@ -159,9 +159,9 @@ function requireProviderUsageChecker(value) {
     typeof value.timeoutMs !== "number"
     || !Number.isFinite(value.timeoutMs)
     || value.timeoutMs < 5000
-    || value.timeoutMs > 120000
+    || value.timeoutMs > 300000
   ) {
-    return { status: "error", message: "providerUsageChecker.timeoutMs must be between 5000 and 120000" };
+    return { status: "error", message: "providerUsageChecker.timeoutMs must be between 5000 and 300000" };
   }
   if (!["auto", "firefox", "chrome", "safari"].includes(value.browser)) {
     return { status: "error", message: "providerUsageChecker.browser must be auto, firefox, chrome, or safari" };
