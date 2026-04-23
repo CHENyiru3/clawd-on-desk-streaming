@@ -119,14 +119,29 @@ html, body {
   width: 100%;
   height: 4px;
   border-radius: 999px;
+  /* Muted gray background = "remaining" segment when nothing is shown */
   background: rgba(183, 177, 171, 0.42);
   overflow: hidden;
+  display: flex;
 }
 
-.provider-usage-fill {
+.provider-usage-used {
   height: 100%;
   border-radius: inherit;
   width: 0%;
+  flex-shrink: 0;
+  /* Default gray; overridden by status rules below */
+  background: linear-gradient(90deg, #8b8680, #6f6a64);
+  transition: width 0.24s ease;
+}
+
+.provider-usage-remaining {
+  height: 100%;
+  border-radius: inherit;
+  width: 0%;
+  flex: 1;
+  /* Muted remainder when we have real data; hidden when no data */
+  background: rgba(183, 177, 171, 0.42);
   transition: width 0.24s ease;
 }
 
@@ -138,32 +153,33 @@ html, body {
   color: #93867a;
 }
 
-.provider-usage-window .provider-usage-fill {
+/* ok / warning / critical — colored used segment */
+.provider-usage-window[data-status="ok"] .provider-usage-used {
+  background: linear-gradient(90deg, #d6b493, #c29569);
+}
+.provider-usage-window[data-status="warning"] .provider-usage-used {
+  background: linear-gradient(90deg, #e8a96a, #d4823c);
+}
+.provider-usage-window[data-status="critical"] .provider-usage-used {
+  background: linear-gradient(90deg, #c78e74, #a9624f);
+}
+
+/* unavailable / error / stale — both segments stay muted gray */
+.provider-usage-window[data-status="unavailable"] .provider-usage-used,
+.provider-usage-window[data-status="error"] .provider-usage-used,
+.provider-usage-window[data-status="stale"] .provider-usage-used {
   background: linear-gradient(90deg, #8b8680, #6f6a64);
 }
-
-.provider-usage-window[data-status="ok"] .provider-usage-fill {
-  background: linear-gradient(90deg, #d6b493, #c29569);
-}
-
-.provider-usage-window[data-status="warning"] .provider-usage-fill {
-  background: linear-gradient(90deg, #d6b493, #c29569);
-}
-
-.provider-usage-window[data-status="critical"] .provider-usage-fill {
-  background: linear-gradient(90deg, #c78e74, #a9624f);
+.provider-usage-window[data-status="unavailable"] .provider-usage-remaining,
+.provider-usage-window[data-status="error"] .provider-usage-remaining,
+.provider-usage-window[data-status="stale"] .provider-usage-remaining {
+  width: 0%;
 }
 
 .provider-usage-row[data-status="unavailable"],
 .provider-usage-row[data-status="error"],
 .provider-usage-row[data-status="stale"] {
   background: rgba(249, 246, 242, 0.88);
-}
-
-.provider-usage-window[data-status="unavailable"] .provider-usage-fill,
-.provider-usage-window[data-status="error"] .provider-usage-fill,
-.provider-usage-window[data-status="stale"] .provider-usage-fill {
-  background: linear-gradient(90deg, #d86e6e, #bf4b4b);
 }
 
 .provider-usage-row[data-provider="minimax"] .provider-usage-window-meta {

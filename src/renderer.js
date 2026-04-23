@@ -172,6 +172,28 @@ function getWindowFillPercent(windowInfo) {
   return 0;
 }
 
+/**
+ * Returns { usedPercent, remainingPercent } for the two-segment bar.
+ * usedPercent is the primary visual value; remainingPercent is the muted tail.
+ * Returns null for unavailable/error/stale states (both segments stay gray).
+ */
+function getWindowUsedAndRemaining(windowInfo) {
+  if (!windowInfo || ["error", "unavailable", "stale"].includes(windowInfo.status)) {
+    return null;
+  }
+  let used = null;
+  let remaining = null;
+  if (typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent)) {
+    used = Math.max(0, Math.min(100, windowInfo.usedPercent));
+    remaining = Math.max(0, Math.min(100, 100 - used));
+  } else if (typeof windowInfo.remainingPercent === "number" && Number.isFinite(windowInfo.remainingPercent)) {
+    remaining = Math.max(0, Math.min(100, windowInfo.remainingPercent));
+    used = Math.max(0, Math.min(100, 100 - remaining));
+  }
+  if (used === null) return null;
+  return { usedPercent: used, remainingPercent: remaining };
+}
+
 function computeHudScale({ containerHeight, contentHeight, topOffset = 10, bottomOffset = 8, minScale = 0.72 }) {
   if (!Number.isFinite(containerHeight) || containerHeight <= 0) return 1;
   if (!Number.isFinite(contentHeight) || contentHeight <= 0) return 1;
@@ -240,16 +262,23 @@ function renderProviderUsageHud() {
     const card = cards[provider] || { label: provider, status: "unavailable", windows: [] };
     const windows = Array.isArray(card.windows) ? card.windows : [];
     const windowsMarkup = windows.map((windowInfo) => {
-      const fill = getWindowFillPercent(windowInfo);
+      const segments = getWindowUsedAndRemaining(windowInfo);
       const showMeta = !["error", "unavailable", "stale"].includes(windowInfo.status);
       const submeta = showMeta ? (windowInfo.resetText || windowInfo.detailText || "") : "";
+      // Two-segment bar: colored "used" on left + muted "remaining" on right.
+      // segments is null for unavailable/error/stale → both segments collapse, track stays gray.
+      const usedWidth = segments ? segments.usedPercent : 0;
+      const remainingWidth = segments ? segments.remainingPercent : 0;
       return (
         `<div class="provider-usage-window" data-window="${escapeHtml(windowInfo.key || "")}" data-status="${escapeHtml(windowInfo.status || "unavailable")}">` +
           `<div class="provider-usage-window-head">` +
             `<span class="provider-usage-window-label">${escapeHtml(windowInfo.label || "--")}</span>` +
             `<span class="provider-usage-window-percent">${escapeHtml(formatWindowPercent(windowInfo))}</span>` +
           `</div>` +
-          `<div class="provider-usage-track"><div class="provider-usage-fill" style="width:${fill}%"></div></div>` +
+          `<div class="provider-usage-track">` +
+            `<div class="provider-usage-used" style="width:${usedWidth}%"></div>` +
+            `<div class="provider-usage-remaining" style="width:${remainingWidth}%"></div>` +
+          `</div>` +
           `<div class="provider-usage-window-meta">${escapeHtml(submeta || "\u00a0")}</div>` +
         `</div>`
       );
