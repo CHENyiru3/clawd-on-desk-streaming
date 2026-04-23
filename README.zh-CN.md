@@ -4,12 +4,11 @@
 <h1 align="center">Clawd 桌宠</h1>
 <p align="center">
   <a href="README.md">English</a>
-</p>
-<p align="center">
-  <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge-flat.svg" alt="Mentioned in Awesome Claude Code"></a>
+  &nbsp;·&nbsp;
+  <strong>v1.0.0</strong>
 </p>
 
-一个能实时感知 AI 编程助手工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。内置两套主题：**Clawd**（像素螃蟹）和 **Calico**（三花猫），支持自定义主题。
+一个能实时感知 AI 编程助手工作状态的桌面宠物。Clawd 住在你的屏幕上——你提问时它思考，工具运行时它打字，子代理工作时它杂耍，审批权限时它弹卡片，任务完成时它庆祝，你离开时它睡觉。内置 **Clawd**（像素螃蟹）主题，支持自定义主题。
 
 > 支持 Windows 11、macOS 和 Ubuntu/Linux。需要 Node.js。支持 **Claude Code**、**Codex CLI**、**Copilot CLI**、**Gemini CLI**、**Kiro CLI**、**Cursor Agent** 与 **opencode**。
 
@@ -79,15 +78,7 @@
     <td align="center"><img src="assets/gif/clawd-carrying.gif" width="100"><br><sub>搬运</sub></td>
     <td align="center"><img src="assets/gif/clawd-sleeping.gif" width="100"><br><sub>睡觉</sub></td>
   </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>三花待机</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>三花思考</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>三花打字</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>三花建造</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>三花杂耍</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>三花指挥</sub></td>
-  </tr>
-</table>
+  </table>
 
 完整事件映射表、极简模式、点击彩蛋见：**[docs/state-mapping.zh-CN.md](docs/state-mapping.zh-CN.md)**
 
@@ -95,7 +86,7 @@
 
 ```bash
 # 克隆仓库
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
+git clone https://github.com/CHENyiru3/clawd-on-desk-streaming.git
 cd clawd-on-desk
 
 # 安装依赖
@@ -150,7 +141,7 @@ node scripts/validate-theme.js path/to/your-theme
 
 ## 参与贡献
 
-Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/rullerzhou-afk/clawd-on-desk/issues) 里聊或直接提交 PR。
+Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 PR —— 在 [Issues](https://github.com/CHENyiru3/clawd-on-desk-streaming/issues) 里聊或直接提交 PR。
 
 ### 贡献者
 
@@ -182,7 +173,7 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 ## 致谢
 
 - Clawd 像素画参考自 [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- 本项目在 [LINUX DO](https://linux.do/) 社区推广
+- Forked from [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk)，本项目基于此开发。
 
 ## 许可证
 
@@ -191,5 +182,4 @@ Clawd on Desk 是一个社区驱动的项目。欢迎提 Bug、提需求、提 P
 **美术素材（assets/）不适用 MIT 许可。** 所有权利归各自版权持有人所有，详见 [assets/LICENSE](assets/LICENSE)。
 
 - **Clawd** 角色设计归属 [Anthropic](https://www.anthropic.com)。本项目为非官方粉丝作品，与 Anthropic 无官方关联。
-- **三花猫** 素材由 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)) 创作，保留所有权利。
 - **第三方画师作品**：版权归各自作者所有。

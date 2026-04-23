@@ -187,6 +187,18 @@ function getWindowUsageStatus(windowInfo, segments) {
   return "ok";
 }
 
+function getUsageWidthClass(percent) {
+  const width = Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : 0;
+  return `usage-width-${width}`;
+}
+
+function getUsageStatusClass(usageStatus) {
+  if (usageStatus === "critical") return "usage-status-critical";
+  if (usageStatus === "warning") return "usage-status-warning";
+  if (usageStatus === "ok") return "usage-status-ok";
+  return "usage-status-unavailable";
+}
+
 function computeHudScale({ containerHeight, contentHeight, topOffset = 10, bottomOffset = 8, minScale = 0.72 }) {
   if (!Number.isFinite(containerHeight) || containerHeight <= 0) return 1;
   if (!Number.isFinite(contentHeight) || contentHeight <= 0) return 1;
@@ -263,6 +275,8 @@ function renderProviderUsageHud() {
       const usedWidth = segments ? segments.usedPercent : 0;
       const remainingWidth = segments ? segments.remainingPercent : 0;
       const usageStatus = getWindowUsageStatus(windowInfo, segments);
+      const usedClass = `${getUsageWidthClass(usedWidth)} ${getUsageStatusClass(usageStatus)}`;
+      const remainingClass = getUsageWidthClass(remainingWidth);
       return (
         `<div class="provider-usage-window" data-window="${escapeHtml(windowInfo.key || "")}" data-status="${escapeHtml(windowInfo.status || "unavailable")}" data-usage-status="${escapeHtml(usageStatus)}">` +
           `<div class="provider-usage-window-head">` +
@@ -270,8 +284,8 @@ function renderProviderUsageHud() {
             `<span class="provider-usage-window-percent">${escapeHtml(formatWindowPercent(windowInfo))}</span>` +
           `</div>` +
           `<div class="provider-usage-track">` +
-            `<div class="provider-usage-used" style="width:${usedWidth}%"></div>` +
-            `<div class="provider-usage-remaining" style="width:${remainingWidth}%"></div>` +
+            `<div class="provider-usage-used ${usedClass}"></div>` +
+            `<div class="provider-usage-remaining ${remainingClass}"></div>` +
           `</div>` +
           `<div class="provider-usage-window-meta">${escapeHtml(submeta || "\u00a0")}</div>` +
         `</div>`
@@ -656,7 +670,7 @@ window.electronAPI.onStateChange((state, svg) => {
 //   1. Single-target (legacy): eyeTarget/bodyTarget/shadowTarget + applyEyeMove
 //      Used by default clawd theme (tc.eyeTracking.ids config)
 //   2. Layered tracking: per-element <g> wrappers + independent easing per layer
-//      Used when tc.eyeTracking.trackingLayers is defined (e.g. calico theme)
+//      Used when tc.eyeTracking.trackingLayers is defined
 
 let eyeTarget = null;
 let bodyTarget = null;
@@ -719,7 +733,7 @@ function _unwrapAll(svgDoc) {
 }
 
 /**
- * Calculate clamped offset for a layer (same formula as calico-test.html).
+ * Calculate clamped offset for a layer.
  * Maps raw distance to [0, maxOffset] with soft clamping.
  */
 function _calcLayerOffset(dx, dy, maxOffset) {

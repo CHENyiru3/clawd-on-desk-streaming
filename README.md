@@ -5,17 +5,14 @@
 <p align="center">
   <a href="README.zh-CN.md">中文版</a>
   &nbsp;·&nbsp;
-  <strong>v0.5.10</strong>
-</p>
-<p align="center">
-  <a href="https://github.com/hesreallyhim/awesome-claude-code"><img src="https://awesome.re/mentioned-badge-flat.svg" alt="Mentioned in Awesome Claude Code"></a>
+  <strong>v1.0.0</strong>
 </p>
 
-A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, and sleeping when you're away. Ships with two built-in themes: **Clawd** (pixel crab) and **Calico** (三花猫), with full support for custom themes.
+A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd lives on your screen — thinking when you prompt, typing when tools run, juggling subagents, reviewing permissions, celebrating when tasks complete, and sleeping when you're away. Ships with a built-in **Clawd** (pixel crab) theme with full support for custom themes.
 
 > Supports Windows 11, macOS, and Ubuntu/Linux. Requires Node.js. Works with **Claude Code**, **Codex CLI**, **Copilot CLI**, **Gemini CLI**, **Cursor Agent**, **Kiro CLI**, **opencode**, and **Hermes**.
 
-## What's New in v0.5.10
+## What's New in v1.0.0
 
 ### Hermes Chat — Now Built-In
 - Chat with Hermes directly from the pet panel on the left side of your screen
@@ -103,14 +100,7 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
     <td align="center"><img src="assets/gif/clawd-carrying.gif" width="100"><br><sub>Carrying</sub></td>
     <td align="center"><img src="assets/gif/clawd-sleeping.gif" width="100"><br><sub>Sleeping</sub></td>
   </tr>
-  <tr>
-    <td align="center"><img src="assets/gif/calico-idle.gif" width="80"><br><sub>Calico Idle</sub></td>
-    <td align="center"><img src="assets/gif/calico-thinking.gif" width="80"><br><sub>Calico Thinking</sub></td>
-    <td align="center"><img src="assets/gif/calico-typing.gif" width="80"><br><sub>Calico Typing</sub></td>
-    <td align="center"><img src="assets/gif/calico-building.gif" width="80"><br><sub>Calico Building</sub></td>
-    <td align="center"><img src="assets/gif/calico-juggling.gif" width="80"><br><sub>Calico Juggling</sub></td>
-    <td align="center"><img src="assets/gif/calico-conducting.gif" width="80"><br><sub>Calico Conducting</sub></td>
-  </tr>
+  </td>
 </table>
 
 Full event-to-state mapping, mini mode, and click reactions: **[docs/state-mapping.md](docs/state-mapping.md)**
@@ -119,7 +109,7 @@ Full event-to-state mapping, mini mode, and click reactions: **[docs/state-mappi
 
 ```bash
 # Clone the repo
-git clone https://github.com/rullerzhou-afk/clawd-on-desk.git
+git clone https://github.com/CHENyiru3/clawd-on-desk-streaming.git
 cd clawd-on-desk
 
 # Install dependencies
@@ -174,7 +164,7 @@ Some things we'd like to explore in the future:
 
 ## Contributing
 
-Clawd on Desk is a community-driven project. Bug reports, feature ideas, and pull requests are all welcome — open an [issue](https://github.com/rullerzhou-afk/clawd-on-desk/issues) to discuss or submit a PR directly.
+Clawd on Desk is a community-driven project. Bug reports, feature ideas, and pull requests are all welcome — open an [issue](https://github.com/CHENyiru3/clawd-on-desk-streaming/issues) to discuss or submit a PR directly.
 
 ### Contributors
 
@@ -216,7 +206,7 @@ Thanks to everyone who has helped make Clawd better:
 ## Acknowledgments
 
 - Clawd pixel art reference from [clawd-tank](https://github.com/marciogranzotto/clawd-tank) by [@marciogranzotto](https://github.com/marciogranzotto)
-- Shared on [LINUX DO](https://linux.do/) community
+- Forked from [rullerzhou-afk/clawd-on-desk](https://github.com/rullerzhou-afk/clawd-on-desk), which this project builds upon.
 
 ## License
 
@@ -225,5 +215,4 @@ Source code is licensed under the [MIT License](LICENSE).
 **Artwork (assets/) is NOT covered by MIT.** All rights reserved by their respective copyright holders. See [assets/LICENSE](assets/LICENSE) for details.
 
 - **Clawd** character is the property of [Anthropic](https://www.anthropic.com). This is an unofficial fan project, not affiliated with or endorsed by Anthropic.
-- **Calico cat (三花猫)** artwork by 鹿鹿 ([@rullerzhou-afk](https://github.com/rullerzhou-afk)). All rights reserved.
 - **Third-party contributions**: copyright retained by respective artists.

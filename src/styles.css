@@ -139,7 +139,7 @@ html, body {
   height: 100%;
   border-radius: inherit;
   width: 0%;
-  flex: 1;
+  flex-shrink: 0;
   /* Muted remainder when we have real data; hidden when no data */
   background: rgba(183, 177, 171, 0.42);
   transition: width 0.24s ease;
@@ -154,23 +154,125 @@ html, body {
 }
 
 /* ok / warning / critical — colored used segment */
-.provider-usage-window[data-usage-status="ok"] .provider-usage-used {
-  background: linear-gradient(90deg, #d6b493, #c29569);
+.provider-usage-used.usage-status-ok {
+  background: #22c55e;
 }
-.provider-usage-window[data-usage-status="warning"] .provider-usage-used {
-  background: linear-gradient(90deg, #e8a96a, #d4823c);
+.provider-usage-used.usage-status-warning {
+  background: #f59e0b;
 }
-.provider-usage-window[data-usage-status="critical"] .provider-usage-used {
-  background: linear-gradient(90deg, #c78e74, #a9624f);
+.provider-usage-used.usage-status-critical {
+  background: #ef4444;
 }
 
 /* no usable percent data — both segments stay muted gray */
-.provider-usage-window[data-usage-status="unavailable"] .provider-usage-used {
+.provider-usage-used.usage-status-unavailable {
   background: linear-gradient(90deg, #8b8680, #6f6a64);
 }
 .provider-usage-window[data-usage-status="unavailable"] .provider-usage-remaining {
   width: 0%;
 }
+
+.usage-width-0 { width: 0%; }
+.usage-width-1 { width: 1%; }
+.usage-width-2 { width: 2%; }
+.usage-width-3 { width: 3%; }
+.usage-width-4 { width: 4%; }
+.usage-width-5 { width: 5%; }
+.usage-width-6 { width: 6%; }
+.usage-width-7 { width: 7%; }
+.usage-width-8 { width: 8%; }
+.usage-width-9 { width: 9%; }
+.usage-width-10 { width: 10%; }
+.usage-width-11 { width: 11%; }
+.usage-width-12 { width: 12%; }
+.usage-width-13 { width: 13%; }
+.usage-width-14 { width: 14%; }
+.usage-width-15 { width: 15%; }
+.usage-width-16 { width: 16%; }
+.usage-width-17 { width: 17%; }
+.usage-width-18 { width: 18%; }
+.usage-width-19 { width: 19%; }
+.usage-width-20 { width: 20%; }
+.usage-width-21 { width: 21%; }
+.usage-width-22 { width: 22%; }
+.usage-width-23 { width: 23%; }
+.usage-width-24 { width: 24%; }
+.usage-width-25 { width: 25%; }
+.usage-width-26 { width: 26%; }
+.usage-width-27 { width: 27%; }
+.usage-width-28 { width: 28%; }
+.usage-width-29 { width: 29%; }
+.usage-width-30 { width: 30%; }
+.usage-width-31 { width: 31%; }
+.usage-width-32 { width: 32%; }
+.usage-width-33 { width: 33%; }
+.usage-width-34 { width: 34%; }
+.usage-width-35 { width: 35%; }
+.usage-width-36 { width: 36%; }
+.usage-width-37 { width: 37%; }
+.usage-width-38 { width: 38%; }
+.usage-width-39 { width: 39%; }
+.usage-width-40 { width: 40%; }
+.usage-width-41 { width: 41%; }
+.usage-width-42 { width: 42%; }
+.usage-width-43 { width: 43%; }
+.usage-width-44 { width: 44%; }
+.usage-width-45 { width: 45%; }
+.usage-width-46 { width: 46%; }
+.usage-width-47 { width: 47%; }
+.usage-width-48 { width: 48%; }
+.usage-width-49 { width: 49%; }
+.usage-width-50 { width: 50%; }
+.usage-width-51 { width: 51%; }
+.usage-width-52 { width: 52%; }
+.usage-width-53 { width: 53%; }
+.usage-width-54 { width: 54%; }
+.usage-width-55 { width: 55%; }
+.usage-width-56 { width: 56%; }
+.usage-width-57 { width: 57%; }
+.usage-width-58 { width: 58%; }
+.usage-width-59 { width: 59%; }
+.usage-width-60 { width: 60%; }
+.usage-width-61 { width: 61%; }
+.usage-width-62 { width: 62%; }
+.usage-width-63 { width: 63%; }
+.usage-width-64 { width: 64%; }
+.usage-width-65 { width: 65%; }
+.usage-width-66 { width: 66%; }
+.usage-width-67 { width: 67%; }
+.usage-width-68 { width: 68%; }
+.usage-width-69 { width: 69%; }
+.usage-width-70 { width: 70%; }
+.usage-width-71 { width: 71%; }
+.usage-width-72 { width: 72%; }
+.usage-width-73 { width: 73%; }
+.usage-width-74 { width: 74%; }
+.usage-width-75 { width: 75%; }
+.usage-width-76 { width: 76%; }
+.usage-width-77 { width: 77%; }
+.usage-width-78 { width: 78%; }
+.usage-width-79 { width: 79%; }
+.usage-width-80 { width: 80%; }
+.usage-width-81 { width: 81%; }
+.usage-width-82 { width: 82%; }
+.usage-width-83 { width: 83%; }
+.usage-width-84 { width: 84%; }
+.usage-width-85 { width: 85%; }
+.usage-width-86 { width: 86%; }
+.usage-width-87 { width: 87%; }
+.usage-width-88 { width: 88%; }
+.usage-width-89 { width: 89%; }
+.usage-width-90 { width: 90%; }
+.usage-width-91 { width: 91%; }
+.usage-width-92 { width: 92%; }
+.usage-width-93 { width: 93%; }
+.usage-width-94 { width: 94%; }
+.usage-width-95 { width: 95%; }
+.usage-width-96 { width: 96%; }
+.usage-width-97 { width: 97%; }
+.usage-width-98 { width: 98%; }
+.usage-width-99 { width: 99%; }
+.usage-width-100 { width: 100%; }
 
 .provider-usage-row[data-status="unavailable"],
 .provider-usage-row[data-status="error"],

@@ -28,6 +28,18 @@ function getWindowUsageStatus(windowInfo, segments) {
   return "ok";
 }
 
+function getUsageWidthClass(percent) {
+  const width = Number.isFinite(percent) ? Math.max(0, Math.min(100, Math.round(percent))) : 0;
+  return `usage-width-${width}`;
+}
+
+function getUsageStatusClass(usageStatus) {
+  if (usageStatus === "critical") return "usage-status-critical";
+  if (usageStatus === "warning") return "usage-status-warning";
+  if (usageStatus === "ok") return "usage-status-ok";
+  return "usage-status-unavailable";
+}
+
 describe("provider-usage bar segment derivation", () => {
   // 24% used → short colored used segment + long muted remainder
   it("24% used shows short colored segment", () => {
@@ -122,5 +134,21 @@ describe("provider-usage bar segment derivation", () => {
     assert.strictEqual(getWindowUsageStatus({}, { usedPercent: 64, remainingPercent: 36 }), "warning");
     assert.strictEqual(getWindowUsageStatus({}, { usedPercent: 90, remainingPercent: 10 }), "critical");
     assert.strictEqual(getWindowUsageStatus({}, null), "unavailable");
+  });
+
+  it("maps percent values to CSP-safe width classes", () => {
+    assert.strictEqual(getUsageWidthClass(24), "usage-width-24");
+    assert.strictEqual(getUsageWidthClass(64.4), "usage-width-64");
+    assert.strictEqual(getUsageWidthClass(90.6), "usage-width-91");
+    assert.strictEqual(getUsageWidthClass(-10), "usage-width-0");
+    assert.strictEqual(getUsageWidthClass(150), "usage-width-100");
+    assert.strictEqual(getUsageWidthClass(NaN), "usage-width-0");
+  });
+
+  it("maps usage status to CSP-safe status classes", () => {
+    assert.strictEqual(getUsageStatusClass("ok"), "usage-status-ok");
+    assert.strictEqual(getUsageStatusClass("warning"), "usage-status-warning");
+    assert.strictEqual(getUsageStatusClass("critical"), "usage-status-critical");
+    assert.strictEqual(getUsageStatusClass("unavailable"), "usage-status-unavailable");
   });
 });

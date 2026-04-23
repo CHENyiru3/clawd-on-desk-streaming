@@ -265,13 +265,13 @@ describe("setThemeOverrideDisabled", () => {
 
   it("主题隔离：themeA 的禁用不影响 themeB", () => {
     const snap = baseSnap();
-    snap.themeOverrides = { calico: { states: { attention: { disabled: true } } } };
+    snap.themeOverrides = { mycat: { states: { attention: { disabled: true } } } };
     const r = action(
       { themeId: "clawd", stateKey: "attention", disabled: true },
       { snapshot: snap },
     );
     assert.deepStrictEqual(r.commit.themeOverrides, {
-      calico: { states: { attention: { disabled: true } } },
+      mycat: { states: { attention: { disabled: true } } },
       clawd:  { states: { attention: { disabled: true } } },
     });
   });
@@ -329,7 +329,7 @@ describe("resetThemeOverrides", () => {
 
   it("清空当前主题的所有 overrides", () => {
     const snap = baseSnap();
-    snap.theme = "calico";
+    snap.theme = "mycat";
     snap.themeOverrides = {
       clawd: {
         states: {
@@ -337,13 +337,13 @@ describe("resetThemeOverrides", () => {
           notification: { disabled: true },
         },
       },
-      calico: { states: { error: { disabled: true } } },
+      mycat: { states: { error: { disabled: true } } },
     };
     const r = action({ themeId: "clawd" }, { snapshot: snap });
     assert.strictEqual(r.status, "ok");
-    // clawd 整条清掉，calico 保留
+    // clawd 整条清掉，mycat 保留
     assert.deepStrictEqual(r.commit.themeOverrides, {
-      calico: { states: { error: { disabled: true } } },
+      mycat: { states: { error: { disabled: true } } },
     });
   });
 
@@ -356,7 +356,7 @@ describe("resetThemeOverrides", () => {
 
   it("接受字符串 payload 简写", () => {
     const snap = baseSnap();
-    snap.theme = "calico";
+    snap.theme = "mycat";
     snap.themeOverrides = { clawd: { states: { attention: { disabled: true } } } };
     const r = action("clawd", { snapshot: snap });
     assert.strictEqual(r.status, "ok");
@@ -507,7 +507,7 @@ describe("setAnimationOverride", () => {
   it("非当前主题不触发 activateTheme，但照样提交 override", () => {
     const calls = [];
     const snap = baseSnap();
-    snap.theme = "calico";
+    snap.theme = "mycat";
     const r = action(
       {
         themeId: "clawd",

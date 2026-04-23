@@ -675,11 +675,11 @@ describe("setThemeSelection command", () => {
   });
 
   it("preserves other themes' variantIds when committing", () => {
-    const snapshotWithVariant = { ...baseSnapshot, themeVariant: { calico: "hyper" } };
+    const snapshotWithVariant = { ...baseSnapshot, themeVariant: { mycat: "hyper" } };
     const { deps } = makeDeps({ snapshot: snapshotWithVariant });
     const r = commandRegistry.setThemeSelection({ themeId: "clawd", variantId: "chill" }, deps);
     assert.strictEqual(r.status, "ok");
-    assert.deepStrictEqual(r.commit.themeVariant, { calico: "hyper", clawd: "chill" });
+    assert.deepStrictEqual(r.commit.themeVariant, { mycat: "hyper", clawd: "chill" });
   });
 
   it("self-heals by committing the RESOLVED variantId on dead-variant fallback", () => {

@@ -160,7 +160,7 @@ const SCHEMA = {
     defaultFactory: () => ({}),
     normalize: normalizeThemeOverrides,
   },
-  // Phase 3b-swap: per-theme variant selection (e.g. {clawd: "chill", calico: "default"}).
+  // Phase 3b-swap: per-theme variant selection (e.g. {clawd: "chill", mycat: "default"}).
   // Missing key for a theme = use that theme's `default` variant. Unknown variantIds
   // get lenient-fallback to default at load time (see theme-loader._resolveVariant).
   themeVariant: {

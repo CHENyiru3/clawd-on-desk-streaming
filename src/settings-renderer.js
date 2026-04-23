@@ -837,7 +837,7 @@ function localizeField(value) {
 
 // Target visual content size inside theme-thumb frames. Picked to match
 // clawd's natural ratio (~0.51) so pixel pets stay full-size while
-// tight-canvas themes like calico (~0.80) get scaled down to feel balanced.
+// tighter-canvas themes get scaled down to feel balanced.
 const PREVIEW_TARGET_CONTENT_RATIO = 0.55;
 
 function applyThemePreviewScale(img, contentRatio) {

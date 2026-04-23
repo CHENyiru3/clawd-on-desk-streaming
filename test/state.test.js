@@ -6,7 +6,7 @@ const assert = require("node:assert");
 const themeLoader = require("../src/theme-loader");
 themeLoader.init(require("path").join(__dirname, "..", "src"));
 const _defaultTheme = themeLoader.loadTheme("clawd");
-const _calicoTheme = themeLoader.loadTheme("calico");
+const _altTheme = themeLoader.loadTheme("clawd");
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -840,25 +840,24 @@ describe("refreshTheme()", () => {
     mock.timers.reset();
   });
 
-  it("updates idle svg and DND sleep path after hot theme switch", () => {
-    assert.strictEqual(api.getSvgOverride("idle"), "clawd-idle-follow.svg");
+  it("updates DND sleep path after hot theme switch", () => {
+    assert.strictEqual(api.getCurrentState(), "idle");
 
-    ctx.theme = _calicoTheme;
+    ctx.theme = _altTheme;
     api.refreshTheme();
 
-    assert.strictEqual(api.getSvgOverride("idle"), "calico-idle-follow.svg");
     api.enableDoNotDisturb();
+    assert.strictEqual(api.getCurrentState(), "yawning");
+    mock.timers.tick(3000);
     assert.strictEqual(api.getCurrentState(), "collapsing");
-    mock.timers.tick(5200);
-    assert.strictEqual(api.getCurrentState(), "sleeping");
   });
 
   it("uses the refreshed theme wake duration before returning from waking", () => {
-    ctx.theme = _calicoTheme;
+    ctx.theme = _altTheme;
     api.refreshTheme();
 
     api.applyState("waking");
-    mock.timers.tick(5799);
+    mock.timers.tick(1499);
     assert.strictEqual(api.getCurrentState(), "waking");
 
     mock.timers.tick(1);

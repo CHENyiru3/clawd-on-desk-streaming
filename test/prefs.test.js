@@ -164,7 +164,7 @@ describe("prefs.validate", () => {
       y: -50,
       size: "P:15",
       miniEdge: "left",
-      theme: "calico",
+      theme: "mycat",
     });
     assert.strictEqual(v.lang, "zh");
     assert.strictEqual(v.soundMuted, true);
@@ -173,7 +173,7 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.y, -50);
     assert.strictEqual(v.size, "P:15");
     assert.strictEqual(v.miniEdge, "left");
-    assert.strictEqual(v.theme, "calico");
+    assert.strictEqual(v.theme, "mycat");
   });
 
   it("trims translateApiKey and keeps minimax provider", () => {
@@ -301,13 +301,13 @@ describe("prefs.validate", () => {
     const v = prefs.validate({
       themeVariant: {
         clawd: "chill",
-        calico: "default",
+        "mycat": "default",
         bogus: 42,           // wrong value type
         "": "chill",         // empty themeId
         nullVal: "",         // empty variantId
       },
     });
-    assert.deepStrictEqual(v.themeVariant, { clawd: "chill", calico: "default" });
+    assert.deepStrictEqual(v.themeVariant, { clawd: "chill", "mycat": "default" });
   });
 
   it("themeVariant falls back to defaults when not an object", () => {

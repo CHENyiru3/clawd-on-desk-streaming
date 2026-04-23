@@ -460,7 +460,7 @@ function getAssetPath(filename) {
   if (!activeTheme) return path.join(assetsSvgDir, filename);
 
   if (activeTheme._builtin) {
-    // Built-in theme with own assets dir (e.g., calico with APNGs)
+    // Built-in theme with own assets dir (e.g. APNG-based themes)
     if (!filename.endsWith(".svg")) {
       const themeAsset = path.join(activeTheme._themeDir, "assets", filename);
       if (fs.existsSync(themeAsset)) return themeAsset;
@@ -505,7 +505,7 @@ function getRendererAssetsPath() {
 function getRendererSourceAssetsPath() {
   if (!activeTheme) return null;
   if (activeTheme._builtin) {
-    // Built-in theme with own assets dir (e.g., calico with APNGs)
+    // Built-in theme with own assets dir (e.g. APNG-based themes)
     const themeAssetsDir = path.join(activeTheme._themeDir, "assets");
     if (fs.existsSync(themeAssetsDir)) {
       return "../themes/" + activeTheme._id + "/assets";
@@ -1296,7 +1296,7 @@ function _buildPreviewUrl(raw, themeDir, isBuiltin) {
     || null;
   if (!previewFile) return null;
   const filename = path.basename(previewFile);
-  // clawd reuses assets/svg/ at repo root; calico + user themes have their own.
+  // clawd reuses assets/svg/ at repo root; other built-in themes have their own.
   let absPath = null;
   const themeLocal = path.join(themeDir, "assets", filename);
   if (fs.existsSync(themeLocal)) {
