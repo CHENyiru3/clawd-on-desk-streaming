@@ -58,13 +58,7 @@
       "hooks/**/*",
       "extensions/**/*"
     ],
-    "publish": [
-      {
-        "provider": "github",
-        "owner": "rullerzhou-afk",
-        "repo": "clawd-on-desk"
-      }
-    ]
+    "publish": null
   },
   "devDependencies": {
     "electron": "^41.0.2",

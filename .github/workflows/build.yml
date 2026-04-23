@@ -6,34 +6,85 @@ on:
       - "v*"
   workflow_dispatch:
 
+env:
+  NODE_VERSION: "20"
+
 jobs:
   build-mac:
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-      - run: npm install
-      - run: npx electron-builder --mac --publish never
-      - uses: actions/upload-artifact@v4
-        with:
-          name: mac-installer
-          path: |
-            dist/*.dmg
-            dist/latest-mac.yml
+      - name: Checkout
+        uses: actions/checkout@v4
 
-  release:
-    needs: [build-mac]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
         with:
-          path: artifacts
-          merge-multiple: true
-      - uses: softprops/action-gh-release@v2
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      # ── Code Signing ───────────────────────────────────────────────────
+      - name: Import Code Signing Certificate
+        if: env.CSC_LINK != ''
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          echo "$CSC_LINK" | base64 -d > certificate.p12
+          security create-keychain -p "" build-keychain
+          security set-keychain-settings build-keychain
+          security unlock-keychain -p "" build-keychain
+          security import certificate.p12 -P "$CSC_KEY_PASSWORD" -A -t cert -f pkcs12 -k build-keychain
+          security list-keychain -d user -s build-keychain
+          security set-key-partition-list -S apple-tool:,apple:,com.apple.security -k "" build-keychain
+
+      # ── Build DMG ──────────────────────────────────────────────────────
+      - name: Build macOS DMG
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          if [ -z "$CSC_LINK" ]; then
+            unset CSC_LINK
+          fi
+          npx electron-builder --mac --publish never
+
+      # ── Notarize (only when fully signed) ───────────────────────────────
+      - name: Notarize macOS App
+        if: env.APPLE_ID != ''
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          APP_PATH="dist/mac-arm64/Clawd on Desk.app"
+          ZIP_PATH="dist/Clawd on Desk-arm64.zip"
+
+          cd dist/mac-arm64
+          zip -r "$ZIP_PATH" "Clawd on Desk.app"
+          cd ../..
+
+          xcrun notarytool submit "$ZIP_PATH" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          xcrun stapler staple "$APP_PATH"
+          echo "Notarization complete"
+
+      # ── Release ────────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          files: artifacts/*
+          files: |
+            dist/*.dmg
+            dist/*.yml
+            dist/*.blockmap
           generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
