@@ -5,8 +5,8 @@
   "main": "src/main.js",
   "scripts": {
     "start": "node launch.js",
-    "build": "electron-builder --mac",
-    "build:mac": "electron-builder --mac",
+    "build": "rm -rf dist && electron-builder --mac",
+    "build:mac": "rm -rf dist && electron-builder --mac",
     "build:linux": "electron-builder --linux",
     "test": "node --test test/*.test.js",
     "create-theme": "node scripts/create-theme.js",

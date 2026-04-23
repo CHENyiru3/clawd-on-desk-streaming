@@ -2,6 +2,7 @@ const { app, BrowserWindow, screen, Menu, ipcMain, globalShortcut, nativeTheme, 
 const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
+const startupLogger = require("./startup-logger");
 const { applyStationaryCollectionBehavior } = require("./mac-window");
 const hitGeometry = require("./hit-geometry");
 const animationCycle = require("./animation-cycle");
@@ -55,7 +56,22 @@ const prefsModule = require("./prefs");
 const { createSettingsController } = require("./settings-controller");
 const loginItemHelpers = require("./login-item");
 const PREFS_PATH = path.join(app.getPath("userData"), "clawd-prefs.json");
+const _userData = app.getPath("userData");
 const _initialPrefsLoad = prefsModule.load(PREFS_PATH);
+
+// Startup diagnostics: clear log and install global exception handlers.
+startupLogger.clearLog(_userData);
+startupLogger.installGlobalHandlers(_userData);
+startupLogger.milestone(_userData, "prefs-loaded", {
+  version: require("../package.json").version,
+  packaged: app.isPackaged,
+  execPath: process.execPath,
+  appPath: app.getAppPath(),
+  __dirname: __dirname,
+  theme: "clawd", // resolved after controller init
+  prefsPath: PREFS_PATH,
+  debugStartup: startupLogger.isDebugMode(),
+});
 
 // Lazy helpers — these run inside the action `effect` callbacks at click time,
 // long after server.js / hooks/install.js are loaded. Wrapping them in closures
@@ -750,15 +766,9 @@ async function maybePromptMacTypingPermission() {
 // ── Theme loader ──
 const themeLoader = require("./theme-loader");
 themeLoader.init(__dirname, app.getPath("userData"));
+startupLogger.milestone(_userData, "theme-init", { __dirname, userData: app.getPath("userData") });
 
 // Lenient load so a missing/corrupt user-selected theme can't brick boot.
-// If lenient fell back to "clawd" OR the variant fell back to "default",
-// hydrate prefs to match so the store stays truth.
-//
-// Startup runs BEFORE the window is ready, so we call themeLoader.loadTheme
-// directly — not activateTheme (which requires ready windows) and not the
-// setThemeSelection command (which goes through activateTheme). The runtime
-// switch path via UI goes through setThemeSelection post-window-ready.
 const _requestedThemeId = _settingsController.get("theme") || "clawd";
 const _initialVariantMap = _settingsController.get("themeVariant") || {};
 const _requestedVariantId = _initialVariantMap[_requestedThemeId] || "default";
@@ -784,6 +794,11 @@ if (activeTheme._id !== _requestedThemeId || activeTheme._variantId !== _request
     console.warn("Clawd: theme hydrate after fallback failed:", result.message);
   }
 }
+startupLogger.milestone(_userData, "theme-loaded", {
+  requested: _requestedThemeId,
+  resolved: activeTheme._id,
+  variant: activeTheme._variantId,
+});
 
 // ── CSS <object> sizing (from theme) ──
 function getObjRect(bounds) {
@@ -3112,6 +3127,7 @@ function openSettingsWindow() {
 }
 
 function createWindow() {
+  startupLogger.milestone(_userData, "createWindow-entered");
   // Read everything from the settings controller. The mirror caches above
   // (lang/showTray/etc.) were already initialized at module-load time, so
   // here we just need the position/mini fields plus the legacy size migration.
@@ -3195,10 +3211,22 @@ function createWindow() {
   });
 
   win.setFocusable(false);
+  startupLogger.milestone(_userData, "render-window-created");
   win.loadFile(path.join(__dirname, "index.html"));
   win.showInactive();
   // macOS: apply after showInactive() — it resets NSWindowCollectionBehavior
   reapplyMacVisibility();
+
+  // Debug mode: make windows visible and open DevTools for packaged troubleshooting.
+  if (startupLogger.isDebugMode()) {
+    startupLogger.milestone(_userData, "DEBUG_MODE_ENABLED");
+    win.setAlwaysOnTop(false);
+    win.show();
+    win.webContents.openDevTools({ mode: "detach" });
+    if (hitWin && !hitWin.isDestroyed()) {
+      hitWin.show();
+    }
+  }
 
   // macOS: startup-time dock state can be overridden during app/window activation.
   // Re-apply once on next tick so persisted showDock reliably takes effect.
@@ -3250,6 +3278,7 @@ function createWindow() {
     hitWin.showInactive();
     // macOS: apply after showInactive() — it resets NSWindowCollectionBehavior
     reapplyMacVisibility();
+    startupLogger.milestone(_userData, "hit-window-created");
     hitWin.loadFile(path.join(__dirname, "hit.html"));
 
     // Event-level safety net for position sync
@@ -3267,6 +3296,7 @@ function createWindow() {
       sendToHitWin("theme-config", themeLoader.getHitRendererConfig());
       if (themeReloadInProgress) return;
       syncHitStateAfterLoad();
+      startupLogger.milestone(_userData, "hit-window-ready");
     });
 
     // Crash recovery for hitWin
@@ -3376,6 +3406,7 @@ function createWindow() {
     sendToRenderer("theme-config", themeLoader.getRendererConfig());
     if (themeReloadInProgress) return;
     syncRendererStateAfterLoad();
+    startupLogger.milestone(_userData, "render-window-ready");
   });
 
   // ── Crash recovery: renderer process can die from <object> churn ──
@@ -3675,6 +3706,7 @@ if (!gotTheLock) {
   }
 
   app.whenReady().then(() => {
+    startupLogger.milestone(_userData, "app-whenReady");
     // Import system-backed settings (openAtLogin) into prefs on first run.
     // Must run before createWindow() so the first menu draw sees the
     // hydrated value rather than the schema default.
