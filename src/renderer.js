@@ -159,19 +159,6 @@ function formatWindowPercent(windowInfo) {
   return "N/A";
 }
 
-function getWindowFillPercent(windowInfo) {
-  if (windowInfo && ["error", "unavailable", "stale"].includes(windowInfo.status)) {
-    return 100;
-  }
-  if (windowInfo && typeof windowInfo.remainingPercent === "number" && Number.isFinite(windowInfo.remainingPercent)) {
-    return Math.max(0, Math.min(100, windowInfo.remainingPercent));
-  }
-  if (windowInfo && typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent)) {
-    return Math.max(0, Math.min(100, 100 - windowInfo.usedPercent));
-  }
-  return 0;
-}
-
 /**
  * Returns { usedPercent, remainingPercent } for the two-segment bar.
  * usedPercent is the primary visual value; remainingPercent is the muted tail.

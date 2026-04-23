@@ -8,6 +8,7 @@ on:
 
 env:
   NODE_VERSION: "22"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
 jobs:
   build-mac:
@@ -79,8 +80,9 @@ jobs:
           xcrun stapler staple "$APP_PATH"
           echo "Notarization complete"
 
-      # ── Release ────────────────────────────────────────────────────────
+      # ── Release (tag push only) ────────────────────────────────────────
       - name: Create GitHub Release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |

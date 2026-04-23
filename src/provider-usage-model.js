@@ -31,12 +31,10 @@ function statusFromRemaining(remainingPercent) {
 }
 
 function createUsageWindow(overrides = {}) {
-  const remainingPercent = normalizePercent(overrides.remainingPercent);
-  const usedPercent = normalizePercent(
-    typeof overrides.usedPercent === "number" && Number.isFinite(overrides.usedPercent)
-      ? overrides.usedPercent
-      : (typeof remainingPercent === "number" ? 100 - remainingPercent : null)
-  );
+  let remainingPercent = normalizePercent(overrides.remainingPercent);
+  let usedPercent = normalizePercent(overrides.usedPercent);
+  if (usedPercent === null && remainingPercent !== null) usedPercent = normalizePercent(100 - remainingPercent);
+  if (remainingPercent === null && usedPercent !== null) remainingPercent = normalizePercent(100 - usedPercent);
   return {
     key: overrides.key || "unknown",
     label: overrides.label || overrides.key || "N/A",
@@ -137,12 +135,10 @@ function buildWindowFromRaw(provider, spec, rawWindow, extras) {
     });
   }
 
-  const remainingPercent = normalizePercent(rawWindow.remaining_percent);
-  const usedPercent = normalizePercent(
-    typeof rawWindow.used_percent === "number" && Number.isFinite(rawWindow.used_percent)
-      ? rawWindow.used_percent
-      : (typeof remainingPercent === "number" ? 100 - remainingPercent : null)
-  );
+  let remainingPercent = normalizePercent(rawWindow.remaining_percent);
+  let usedPercent = normalizePercent(rawWindow.used_percent);
+  if (usedPercent === null && remainingPercent !== null) usedPercent = normalizePercent(100 - remainingPercent);
+  if (remainingPercent === null && usedPercent !== null) remainingPercent = normalizePercent(100 - usedPercent);
   const detailText = typeof rawWindow.detail_text === "string" ? rawWindow.detail_text : null;
 
   return createUsageWindow({
