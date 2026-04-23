@@ -162,12 +162,10 @@ function formatWindowPercent(windowInfo) {
 /**
  * Returns { usedPercent, remainingPercent } for the two-segment bar.
  * usedPercent is the primary visual value; remainingPercent is the muted tail.
- * Returns null for unavailable/error/stale states (both segments stay gray).
+ * Returns null only when no usable percent data exists.
  */
 function getWindowUsedAndRemaining(windowInfo) {
-  if (!windowInfo || ["error", "unavailable", "stale"].includes(windowInfo.status)) {
-    return null;
-  }
+  if (!windowInfo) return null;
   let used = null;
   let remaining = null;
   if (typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent)) {
@@ -179,6 +177,14 @@ function getWindowUsedAndRemaining(windowInfo) {
   }
   if (used === null) return null;
   return { usedPercent: used, remainingPercent: remaining };
+}
+
+function getWindowUsageStatus(windowInfo, segments) {
+  if (!segments) return "unavailable";
+  const remaining = segments.remainingPercent;
+  if (remaining < 20) return "critical";
+  if (remaining < 50) return "warning";
+  return "ok";
 }
 
 function computeHudScale({ containerHeight, contentHeight, topOffset = 10, bottomOffset = 8, minScale = 0.72 }) {
@@ -253,11 +259,12 @@ function renderProviderUsageHud() {
       const showMeta = !["error", "unavailable", "stale"].includes(windowInfo.status);
       const submeta = showMeta ? (windowInfo.resetText || windowInfo.detailText || "") : "";
       // Two-segment bar: colored "used" on left + muted "remaining" on right.
-      // segments is null for unavailable/error/stale → both segments collapse, track stays gray.
+      // segments is null when there is no percent data → track stays gray.
       const usedWidth = segments ? segments.usedPercent : 0;
       const remainingWidth = segments ? segments.remainingPercent : 0;
+      const usageStatus = getWindowUsageStatus(windowInfo, segments);
       return (
-        `<div class="provider-usage-window" data-window="${escapeHtml(windowInfo.key || "")}" data-status="${escapeHtml(windowInfo.status || "unavailable")}">` +
+        `<div class="provider-usage-window" data-window="${escapeHtml(windowInfo.key || "")}" data-status="${escapeHtml(windowInfo.status || "unavailable")}" data-usage-status="${escapeHtml(usageStatus)}">` +
           `<div class="provider-usage-window-head">` +
             `<span class="provider-usage-window-label">${escapeHtml(windowInfo.label || "--")}</span>` +
             `<span class="provider-usage-window-percent">${escapeHtml(formatWindowPercent(windowInfo))}</span>` +

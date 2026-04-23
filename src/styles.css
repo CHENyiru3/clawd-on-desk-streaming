@@ -154,25 +154,21 @@ html, body {
 }
 
 /* ok / warning / critical — colored used segment */
-.provider-usage-window[data-status="ok"] .provider-usage-used {
+.provider-usage-window[data-usage-status="ok"] .provider-usage-used {
   background: linear-gradient(90deg, #d6b493, #c29569);
 }
-.provider-usage-window[data-status="warning"] .provider-usage-used {
+.provider-usage-window[data-usage-status="warning"] .provider-usage-used {
   background: linear-gradient(90deg, #e8a96a, #d4823c);
 }
-.provider-usage-window[data-status="critical"] .provider-usage-used {
+.provider-usage-window[data-usage-status="critical"] .provider-usage-used {
   background: linear-gradient(90deg, #c78e74, #a9624f);
 }
 
-/* unavailable / error / stale — both segments stay muted gray */
-.provider-usage-window[data-status="unavailable"] .provider-usage-used,
-.provider-usage-window[data-status="error"] .provider-usage-used,
-.provider-usage-window[data-status="stale"] .provider-usage-used {
+/* no usable percent data — both segments stay muted gray */
+.provider-usage-window[data-usage-status="unavailable"] .provider-usage-used {
   background: linear-gradient(90deg, #8b8680, #6f6a64);
 }
-.provider-usage-window[data-status="unavailable"] .provider-usage-remaining,
-.provider-usage-window[data-status="error"] .provider-usage-remaining,
-.provider-usage-window[data-status="stale"] .provider-usage-remaining {
+.provider-usage-window[data-usage-status="unavailable"] .provider-usage-remaining {
   width: 0%;
 }
 

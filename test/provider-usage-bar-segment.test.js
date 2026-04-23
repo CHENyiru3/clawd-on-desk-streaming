@@ -6,9 +6,7 @@ const assert = require("node:assert");
 // Replicate the pure derivation logic from renderer.js so we can test it
 // without a DOM environment. This must stay in sync with getWindowUsedAndRemaining().
 function getWindowUsedAndRemaining(windowInfo) {
-  if (!windowInfo || ["error", "unavailable", "stale"].includes(windowInfo.status)) {
-    return null;
-  }
+  if (!windowInfo) return null;
   let used = null;
   let remaining = null;
   if (typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent)) {
@@ -20,6 +18,14 @@ function getWindowUsedAndRemaining(windowInfo) {
   }
   if (used === null) return null;
   return { usedPercent: used, remainingPercent: remaining };
+}
+
+function getWindowUsageStatus(windowInfo, segments) {
+  if (!segments) return "unavailable";
+  const remaining = segments.remainingPercent;
+  if (remaining < 20) return "critical";
+  if (remaining < 50) return "warning";
+  return "ok";
 }
 
 describe("provider-usage bar segment derivation", () => {
@@ -67,25 +73,26 @@ describe("provider-usage bar segment derivation", () => {
     assert.strictEqual(getWindowUsedAndRemaining(undefined), null);
   });
 
-  // Unavailable/error/stale → null (both segments collapse → muted gray)
-  it("returns null for unavailable/error/stale", () => {
+  // Status labels do not suppress real percent data.
+  it("derives segments for unavailable/error/stale when percent data exists", () => {
     for (const status of ["unavailable", "error", "stale"]) {
-      assert.strictEqual(
+      assert.deepStrictEqual(
         getWindowUsedAndRemaining({ status, usedPercent: 30 }),
-        null,
-        `status=${status} should return null`
+        { usedPercent: 30, remainingPercent: 70 },
+        `status=${status} should preserve percent data`
       );
     }
   });
 
-  // Stale MiniMax data still returns null (no false freshness)
-  it("stale MiniMax data returns null and does not imply real usage", () => {
+  // Stale MiniMax data still colors by usage, while stale text remains separate.
+  it("stale MiniMax data still derives usage segments", () => {
     const result = getWindowUsedAndRemaining({
       status: "stale",
       usedPercent: 30,
       remainingPercent: 70,
     });
-    assert.strictEqual(result, null, "stale data must not imply real usage");
+    assert.deepStrictEqual(result, { usedPercent: 30, remainingPercent: 70 });
+    assert.strictEqual(getWindowUsageStatus({}, result), "ok");
   });
 
   // Used takes priority when both are present
@@ -108,5 +115,12 @@ describe("provider-usage bar segment derivation", () => {
   it("0% used shows no colored segment", () => {
     const result = getWindowUsedAndRemaining({ usedPercent: 0 });
     assert.deepStrictEqual(result, { usedPercent: 0, remainingPercent: 100 });
+  });
+
+  it("maps derived usage status from remaining percent", () => {
+    assert.strictEqual(getWindowUsageStatus({}, { usedPercent: 24, remainingPercent: 76 }), "ok");
+    assert.strictEqual(getWindowUsageStatus({}, { usedPercent: 64, remainingPercent: 36 }), "warning");
+    assert.strictEqual(getWindowUsageStatus({}, { usedPercent: 90, remainingPercent: 10 }), "critical");
+    assert.strictEqual(getWindowUsageStatus({}, null), "unavailable");
   });
 });
