@@ -3,22 +3,41 @@
 const TWO_HOUR_SLOTS = Object.freeze([0, 2, 4, 6, 8, 10, 12, 14, 16, 18, 20, 22]);
 const ANCHOR_HOURS = Object.freeze([10, 17, 23]);
 
-function buildDailySchedule(baseDate) {
+/**
+ * Build an array of Date objects for scheduled check-in slots on a given day.
+ * @param {Date} baseDate
+ * @param {string} mode  "hourly" | "twoHourWithAnchors"
+ * @returns {Date[]}
+ */
+function buildDailySchedule(baseDate, mode) {
   const year = baseDate.getFullYear();
   const month = baseDate.getMonth();
   const day = baseDate.getDate();
+
+  if (mode === "hourly") {
+    const slots = [];
+    for (let h = 0; h < 24; h++) {
+      slots.push(new Date(year, month, day, h, 0, 0, 0));
+    }
+    return slots;
+  }
+
+  // twoHourWithAnchors (default, matches previous behavior)
   const hours = new Set([...TWO_HOUR_SLOTS, ...ANCHOR_HOURS]);
   return Array.from(hours)
     .sort((a, b) => a - b)
     .map((hour) => new Date(year, month, day, hour, 0, 0, 0));
 }
 
-function computeNextRun(nowDate) {
-  const today = buildDailySchedule(nowDate);
+function computeNextRun(nowDate, mode) {
+  const today = buildDailySchedule(nowDate, mode || "twoHourWithAnchors");
   for (const slot of today) {
     if (slot.getTime() > nowDate.getTime()) return slot;
   }
-  return buildDailySchedule(new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 1))[0];
+  return buildDailySchedule(
+    new Date(nowDate.getFullYear(), nowDate.getMonth(), nowDate.getDate() + 1),
+    mode || "twoHourWithAnchors",
+  )[0];
 }
 
 module.exports = function createTimeCheckinRuntime(options = {}) {
@@ -28,6 +47,7 @@ module.exports = function createTimeCheckinRuntime(options = {}) {
   const generateMessage = typeof options.generateMessage === "function" ? options.generateMessage : async () => ({ status: "error", message: "No generator configured." });
   const onCheckinReady = typeof options.onCheckinReady === "function" ? options.onCheckinReady : () => {};
   const onStatusChange = typeof options.onStatusChange === "function" ? options.onStatusChange : () => {};
+  const scheduleMode = options.scheduleMode || "hourly";
 
   let timer = null;
   let running = false;
@@ -90,7 +110,7 @@ module.exports = function createTimeCheckinRuntime(options = {}) {
       clearTimer(timer);
       timer = null;
     }
-    const nextRun = computeNextRun(new Date(now()));
+    const nextRun = computeNextRun(new Date(now()), scheduleMode);
     status = {
       ...status,
       running,

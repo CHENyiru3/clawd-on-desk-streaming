@@ -89,8 +89,8 @@ const SCHEMA = {
   timeCheckinEnabled: { type: "boolean", default: process.platform === "darwin" },
   timeCheckinScheduleMode: {
     type: "string",
-    default: "twoHourWithAnchors",
-    enum: ["twoHourWithAnchors"],
+    default: "hourly",
+    enum: ["hourly", "twoHourWithAnchors"],
   },
   timeCheckinGenerator: {
     type: "object",

@@ -116,7 +116,8 @@
     "clickLeft":  { "file": "clawd-react-left.svg",  "duration": 2500 },
     "clickRight": { "file": "clawd-react-right.svg", "duration": 2500 },
     "annoyed":    { "file": "clawd-react-annoyed.svg", "duration": 3500 },
-    "double":     { "files": ["clawd-react-double.svg", "clawd-react-double-jump.svg"], "duration": 3500 }
+    "double":     { "files": ["clawd-react-double.svg", "clawd-react-double-jump.svg"], "duration": 3500 },
+    "happy":      { "file": "clawd-react-left.svg",   "duration": 2500 }
   },
 
   "miniMode": {

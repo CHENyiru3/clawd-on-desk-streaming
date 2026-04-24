@@ -2079,6 +2079,7 @@ _timeCheckinRuntime = createTimeCheckinRuntime({
     };
     broadcastSettingsSnapshot();
   },
+  scheduleMode: _settingsController.get("timeCheckinScheduleMode"),
 });
 
 _providerUsageRuntime = createProviderUsageRuntime({

@@ -151,9 +151,8 @@ function handleClick(clientX) {
   }
   if (isReacting || isDragReacting) return;
 
-  // Non-idle: focus terminal, no reaction
+  // Non-idle: no reaction on single click
   if (currentState !== "idle") {
-    window.hitAPI.focusTerminal();
     return;
   }
 
@@ -169,8 +168,11 @@ function handleClick(clientX) {
   }
 
   if (clickCount === 1) {
-    firstClickDir = clientX < area.offsetWidth / 2 ? "left" : "right";
-    window.hitAPI.focusTerminal();
+    const happyReact = _getReaction("happy");
+    if (happyReact) {
+      playReaction(happyReact.file, happyReact.duration || 2000);
+    }
+    return;
   }
 
   if (clickTimer) { clearTimeout(clickTimer); clickTimer = null; }

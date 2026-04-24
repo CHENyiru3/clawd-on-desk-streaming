@@ -1,16 +1,26 @@
 "use strict";
 
 const STRIP_PATTERNS = [
+  // Internal thinking/resolution tags (XML and markdown)
+  /<think>[\s\S]*?<\/think>/gi,
+  /<analysis>[\s\S]*?<\/analysis>/gi,
+  /<thinking>[\s\S]*?<\/thinking>/gi,
+  // Markdown heading sections that are internal scaffolding
+  /^#{1,3}\s*(?:Thoughts?|Thinking|Reasoning|Analysis|Summary|Response|Output|Answer|Consideration|Notes?|Context)[\s:]*$/gim,
+  // Section headers that wrap short internal content
+  /^#{1,2}\s*(?:Final|Message|Bubble|Note)[\s:]*$/gim,
+  // Generic reasoning chains
+  /\b(?:Reasoning|Thought|Analysis|Chain[- ]of[- ]thought|COT)\s*:[\s\S]*?(?=(?:Final|Message|Answer|Bubble)\s*:|$)/gi,
+  // Session metadata
   /session_id:\s*[^\s]+/gi,
   /©\s*Resumed session/gi,
   /↻\s*Resumed session[^\n]*/gi,
   /\b\d{8}_\d{6}_[a-z0-9]+\b/gi,
-  /<think>[\s\S]*?<\/think>/gi,
-  /<analysis>[\s\S]*?<\/analysis>/gi,
-  /\b(?:Reasoning|Thought|Analysis|Chain[- ]of[- ]thought|COT)\s*:[\s\S]*?(?=(?:Final|Message|Answer)\s*:|$)/gi,
-  /["'“][^"'”]{0,200}["'”]\s*\(\d+\s+user messages?,\s*\d+\s+total messages?\)/gim,
-  /["'“][^"'”]*\(\d+\s+user messages?,\s*\d+\s+total messages?\)[^"'”]*["'”]?/gim,
-  /^(here(?:'|’)s a check-?in|check-?in|message)\s*:\s*/gim,
+  // Message-count footers
+  /["’"][^"’"]{0,200}["’"]\s*\(\d+\s+user messages?,\s*\d+\s+total messages?\)/gim,
+  /["’"][^"’"]*\(\d+\s+user messages?,\s*\d+\s+total messages?\)[^"’"]*["’"]?/gim,
+  // Intro scaffolding
+  /^(here(?:’|’)s a check-?in|check-?in|message)\s*:\s*/gim,
 ];
 
 const PROMPT_LINE_PATTERNS = [
@@ -33,7 +43,12 @@ const PROMPT_LINE_PATTERNS = [
   /^Sanitized clipboard snippets:/i,
   /^Return only the final bubble message\./i,
   /^-\s*\[\d{1,2}:\d{2}\s*[AP]M\]/i,
+  // Internal prefix patterns
+  /^(?:based on|context:|summary:|note:)/i,
 ];
+
+const MIN_MESSAGE_LENGTH = 8;
+const MAX_MESSAGE_LENGTH = 280;
 
 function cleanHermesCheckinOutput(rawText) {
   const raw = String(rawText || "");
@@ -63,8 +78,8 @@ function cleanHermesCheckinOutput(rawText) {
   text = text
     .replace(/^(?:Final|Message|Answer)\s*:\s*/i, "")
     .replace(/\s+/g, " ")
-    .replace(/^["'“]+/, "")
-    .replace(/["'”]+$/, "")
+    .replace(/^["'"]+/, "")
+    .replace(/["'"]+$/, "")
     .trim();
 
   if (candidateLines.length > 1) {
@@ -76,11 +91,20 @@ function cleanHermesCheckinOutput(rawText) {
     }
   }
 
-  if (text.length > 280) {
-    text = text.slice(0, 277).replace(/\s+\S*$/, "").trim() + "...";
+  if (text.length > MAX_MESSAGE_LENGTH) {
+    text = text.slice(0, MAX_MESSAGE_LENGTH - 3).replace(/\s+\S*$/, "").trim() + "...";
   }
 
-  const valid = !!text && !/^([^\w]*|based on sanitized clipboard activity.*)$/i.test(text);
+  // Collapse excess blank lines (max 2 consecutive)
+  text = text.replace(/\n{3,}/g, "\n\n");
+
+  // Trim edges
+  text = text.trim();
+
+  // Minimum content guard — too short after cleaning means likely scaffolding residue
+  const valid = text.length >= MIN_MESSAGE_LENGTH
+    && !/^([^\w]*|based on sanitized clipboard activity.*)$/i.test(text);
+
   return {
     cleanedText: valid ? text : "",
     changed: raw.trim() !== text,

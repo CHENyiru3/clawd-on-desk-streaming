@@ -78,7 +78,7 @@ describe("prefs.getDefaults", () => {
   it("seeds time check-in prefs", () => {
     const d = prefs.getDefaults();
     assert.strictEqual(typeof d.timeCheckinEnabled, "boolean");
-    assert.strictEqual(d.timeCheckinScheduleMode, "twoHourWithAnchors");
+    assert.strictEqual(d.timeCheckinScheduleMode, "hourly");
     assert.strictEqual(d.timeCheckinPreviewClipboardWindowMinutes, 60);
     assert.deepStrictEqual(d.timeCheckinGenerator, {
       cwd: "/Users/eric_yiru/Desktop/Home",
