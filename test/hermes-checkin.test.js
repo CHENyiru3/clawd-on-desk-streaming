@@ -52,7 +52,7 @@ describe("hermes-checkin prompt building", () => {
         end() {},
       };
       queueMicrotask(() => {
-        child.stdout.emit("data", "session_id: 20260418_1\n© Resumed session\nWarm check-in");
+        child.stdout.emit("data", "session_id: 20260418_1\n© Resumed session\noutput::\nWarm check-in.\n::end");
         child.emit("close", 0);
       });
       return child;
@@ -86,7 +86,7 @@ describe("hermes-checkin prompt building", () => {
       ],
     });
     assert.strictEqual(result.ok, true);
-    assert.strictEqual(result.cleanedText, "Warm check-in");
+    assert.strictEqual(result.cleanedText, "Warm check-in.");
     assert.strictEqual(result.cleanedChanged, true);
   });
 

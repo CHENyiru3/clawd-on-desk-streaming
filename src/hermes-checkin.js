@@ -50,7 +50,7 @@ function buildPrompt({ now, slotLabel, context }) {
     "You are generating one short coworker-style bubble body.",
     "Use the sanitized clipboard history below as the main evidence.",
     "Treat resumed session context as background tone only, not the main evidence source.",
-    "Return exactly one short message for the bubble body.",
+    "Wrap the check-in message in output:: and ::end on their own lines. The message should be 1-3 short sentences.",
     "No heading, no label, no markdown, no quotes, no metadata.",
     "Do not mention the resumed session, clipboard, sanitization, or hidden reasoning.",
     "Do not output think tags, analysis, XML tags, or system text.",
@@ -70,7 +70,7 @@ function buildPrompt({ now, slotLabel, context }) {
       lines.push(`- [${new Date(entry.at).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" })}] ${entry.text}`);
     }
   }
-  lines.push("Return only the final bubble message.");
+  lines.push("Wrap the check-in message in output:: and ::end on their own lines.");
   return lines.join("\n");
 }
 
