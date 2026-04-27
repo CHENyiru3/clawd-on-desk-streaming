@@ -42,8 +42,10 @@ class UsageWindow:
     name: str = ""
     used_percent: float | None = None
     remaining_percent: float | None = None
+    display_text: str | None = None
     resets_at: str | None = None
     reset_description: str | None = None
+    detail_text: str | None = None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -202,6 +204,7 @@ def _window_from_quota_object(obj: dict, path_hint: str = "") -> tuple[int, Usag
         name=name[:40] if name else "5h",
         used_percent=round(used_pct, 2),
         remaining_percent=round(remaining_pct, 2),
+        display_text=_format_remaining_display(remaining_pct),
         resets_at=None,
         reset_description=reset_description,
     )
@@ -221,17 +224,91 @@ def _extract_primary_window_from_json_payloads(payloads: list[Any]) -> UsageWind
 
 
 def _parse_pct(text: str) -> tuple[float | None, float | None]:
-    """Parse MiniMax page percentages as used/progress values.
+    """Parse MiniMax page percentages as checked usage plus leftover quota.
 
-    The token-plan page labels the quota area as available quota, but the
-    rendered percentage itself is the used/progress value. A visible "2%"
-    therefore means 2% used and 98% remaining.
+    The token-plan page percentage is treated as checked usage/progress. Clawd
+    presents leftover quota, so a checked "2%" becomes 98% remaining.
     """
-    m = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
+    m = _find_usage_percent(text)
     if not m:
         return None, None
-    val = float(m.group(1))
+    val = float(m)
     return val, round(max(0.0, 100.0 - val), 2)
+
+
+def _format_remaining_display(remaining_pct: float | None) -> str | None:
+    if remaining_pct is None:
+        return None
+    rounded = round(max(0.0, min(100.0, remaining_pct)))
+    return f"{rounded}%"
+
+
+def _line_has_usage_context(line: str) -> bool:
+    lowered = line.lower()
+    return any(
+        kw in lowered
+        for kw in (
+            "token",
+            "quota",
+            "usage",
+            "used",
+            "available",
+            "remain",
+            "call",
+            "request",
+            "limit",
+            "额度",
+            "用量",
+            "已用",
+            "使用",
+            "剩余",
+            "可用",
+            "调用",
+            "请求",
+            "次数",
+            "套餐",
+        )
+    )
+
+
+def _ratio_has_usage_context(text: str) -> bool:
+    lowered = text.lower()
+    return any(
+        kw in lowered
+        for kw in (
+            "calls",
+            "requests",
+            "used",
+            "usage",
+            "quota",
+            "limit",
+            "调用",
+            "请求",
+            "次数",
+            "已用",
+            "使用",
+            "用量",
+            "额度",
+            "可用",
+            "剩余",
+        )
+    )
+
+
+def _find_usage_percent(text: str) -> float | None:
+    """Find the MiniMax usage/progress percent without grabbing unrelated page percentages."""
+    matches = list(re.finditer(r"(\d+(?:\.\d+)?)\s*%", text))
+    if not matches:
+        return None
+
+    for line in text.splitlines():
+        if not _line_has_usage_context(line):
+            continue
+        line_match = re.search(r"(\d+(?:\.\d+)?)\s*%", line)
+        if line_match:
+            return float(line_match.group(1))
+
+    return float(matches[0].group(1))
 
 
 def _extract_hot_item(page_text: str) -> dict | None:
@@ -304,15 +381,38 @@ def _extract_plan_name(page_text: str) -> str | None:
     return None
 
 
+def _looks_like_date_ratio(page_text: str, start: int, end: int) -> bool:
+    before = page_text[max(0, start - 8) : start]
+    after = page_text[end : min(len(page_text), end + 8)]
+    fragment = f"{before}{page_text[start:end]}{after}"
+    return bool(
+        re.search(r"\d{4}\s*/\s*\d{1,2}\s*/\s*\d{1,2}", fragment)
+        or re.search(r"\d{1,2}\s*/\s*\d{1,2}\s*/\s*\d{2,4}", fragment)
+    )
+
+
+def _looks_like_short_date_ratio(page_text: str, match: re.Match) -> bool:
+    left = int(match.group(1))
+    right = int(match.group(2))
+    if not (1 <= left <= 12 and 1 <= right <= 31):
+        return False
+    nearby = page_text[max(0, match.start() - 10) : min(len(page_text), match.end() + 10)]
+    return not _ratio_has_usage_context(nearby)
+
+
 def _extract_quota_counts(page_text: str) -> tuple[float | None, float | None]:
-    """Extract used/limit call counts like '599 / 600'."""
-    for pattern in [
-        r"(\d+)\s*/\s*(\d+)\s*(?:次|调用|calls?|requests?|可用)?",
-        r"(\d+)\s*/\s*(\d+)\s*(?:used|remaining)?",
-    ]:
-        m = re.search(pattern, page_text)
-        if m:
-            return float(m.group(1)), float(m.group(2))
+    """Extract used/limit call counts like '599 / 600' from quota-like context only."""
+    for m in re.finditer(r"(\d+)\s*/\s*(\d+)\s*(?:次|调用|calls?|requests?|可用)?", page_text, re.I):
+        if _looks_like_date_ratio(page_text, m.start(), m.end()) or _looks_like_short_date_ratio(page_text, m):
+            continue
+        used = float(m.group(1))
+        limit = float(m.group(2))
+        if limit <= 0 or used > limit:
+            continue
+        context = page_text[max(0, m.start() - 24) : min(len(page_text), m.end() + 16)]
+        if not _ratio_has_usage_context(context):
+            continue
+        return used, limit
     return None, None
 
 
@@ -333,8 +433,10 @@ def _extract_primary_window(page_text: str) -> UsageWindow:
         name=plan_name or "5h",
         used_percent=used_pct,
         remaining_percent=remaining_pct,
+        display_text=_format_remaining_display(remaining_pct),
         resets_at=resets_at,
         reset_description=reset_desc,
+        detail_text=None if used_pct is not None or remaining_pct is not None else "MiniMax usage was not found on the token-plan page.",
     )
 
 
@@ -536,6 +638,8 @@ def run_headless() -> UsageSnapshot:
             # ── Extract data ─────────────────────────────────────────────────
             primary_window = _extract_primary_window_from_json_payloads(json_payloads) or _extract_primary_window(page_text)
             snapshot.windows["primary"] = primary_window
+            if primary_window.used_percent is None and primary_window.remaining_percent is None:
+                snapshot.warnings.append("MiniMax usage was not found on the token-plan page.")
 
             hot_item = _extract_hot_item(page_text)
             if hot_item:
