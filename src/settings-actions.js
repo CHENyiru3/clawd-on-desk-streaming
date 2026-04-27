@@ -121,6 +121,24 @@ function requireGlobalActivityRules(value) {
   return { status: "ok" };
 }
 
+function requireRemoteSshTrustedHosts(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return { status: "error", message: "remoteSshTrustedHosts must be a plain object" };
+  }
+  for (const [target, entry] of Object.entries(value)) {
+    if (typeof target !== "string" || !target.trim()) {
+      return { status: "error", message: "remoteSshTrustedHosts keys must be non-empty strings" };
+    }
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      return { status: "error", message: `remoteSshTrustedHosts.${target} must be a plain object` };
+    }
+    if (typeof entry.enabled !== "boolean") {
+      return { status: "error", message: `remoteSshTrustedHosts.${target}.enabled must be a boolean` };
+    }
+  }
+  return { status: "ok" };
+}
+
 function requireTimeCheckinGenerator(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return { status: "error", message: "timeCheckinGenerator must be a plain object" };
@@ -282,6 +300,8 @@ const updateRegistry = {
   globalActivityEnabled: requireBoolean("globalActivityEnabled"),
   globalActivityRules: requireGlobalActivityRules,
   globalActivityOnboardingShown: requireBoolean("globalActivityOnboardingShown"),
+  remoteSshAutoBridgeEnabled: requireBoolean("remoteSshAutoBridgeEnabled"),
+  remoteSshTrustedHosts: requireRemoteSshTrustedHosts,
   timeCheckinEnabled: requireBoolean("timeCheckinEnabled"),
   timeCheckinScheduleMode: requireEnum("timeCheckinScheduleMode", ["twoHourWithAnchors"]),
   timeCheckinGenerator: requireTimeCheckinGenerator,
@@ -304,6 +324,7 @@ const updateRegistry = {
   providerUsageHudEnabled: requireBoolean("providerUsageHudEnabled"),
   providerUsageRefreshEnabled: requireBoolean("providerUsageRefreshEnabled"),
   providerUsageMiniMaxEnabled: requireBoolean("providerUsageMiniMaxEnabled"),
+  providerUsageDeepSeekEnabled: requireBoolean("providerUsageDeepSeekEnabled"),
   providerUsageStaleAfterMinutes(value) {
     if (!Number.isInteger(value) || value < 1 || value > 24 * 60) {
       return {
@@ -594,6 +615,53 @@ function setAgentFlag(payload, deps) {
   const nextEntry = { ...(currentEntry || {}), [flag]: value };
   const nextAgents = { ...currentAgents, [agentId]: nextEntry };
   return { status: "ok", commit: { agents: nextAgents } };
+}
+
+function updateRemoteSshHost(payload, deps) {
+  if (!payload || typeof payload !== "object") {
+    return { status: "error", message: "updateRemoteSshHost: payload must be an object" };
+  }
+  const target = typeof payload.target === "string" ? payload.target.trim() : "";
+  const action = typeof payload.action === "string" ? payload.action : "";
+  if (!target) return { status: "error", message: "updateRemoteSshHost.target must be a non-empty string" };
+  const current = (deps && deps.snapshot && deps.snapshot.remoteSshTrustedHosts) || {};
+  const entry = current[target] || { target, enabled: true, prefix: "", lastStatus: "unknown", lastError: null, lastCheckedAt: null };
+
+  if (action === "forget") {
+    const next = { ...current };
+    delete next[target];
+    return { status: "ok", commit: { remoteSshTrustedHosts: next } };
+  }
+  if (action === "disable" || action === "enable") {
+    const next = {
+      ...current,
+      [target]: {
+        ...entry,
+        target,
+        enabled: action === "enable",
+      },
+    };
+    return { status: "ok", commit: { remoteSshTrustedHosts: next } };
+  }
+  if (action === "retry") {
+    return {
+      status: "ok",
+      commit: {
+        remoteSshTrustedHosts: {
+          ...current,
+          [target]: {
+            ...entry,
+            target,
+            enabled: true,
+            lastStatus: "queued",
+            lastError: null,
+            lastCheckedAt: Date.now(),
+          },
+        },
+      },
+    };
+  }
+  return { status: "error", message: "updateRemoteSshHost.action must be retry, disable, enable, or forget" };
 }
 
 const _validateRemoveThemeId = requireString("removeTheme.themeId");
@@ -1007,6 +1075,7 @@ const commandRegistry = {
   uninstallHooks,
   registerShortcut: notImplemented("registerShortcut"),
   setAgentFlag,
+  updateRemoteSshHost,
   setAnimationOverride,
   setThemeOverrideDisabled,
   resetThemeOverrides,
@@ -1040,4 +1109,5 @@ module.exports = {
   requireEnum,
   requireString,
   requirePlainObject,
+  requireRemoteSshTrustedHosts,
 };

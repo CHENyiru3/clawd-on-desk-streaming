@@ -148,6 +148,9 @@ function escapeHtml(value) {
 }
 
 function formatWindowPercent(windowInfo) {
+  if (windowInfo && typeof windowInfo.displayText === "string" && windowInfo.displayText.trim()) {
+    return windowInfo.displayText.trim();
+  }
   if (windowInfo && typeof windowInfo.remainingPercent === "number" && Number.isFinite(windowInfo.remainingPercent)) {
     return `${Math.round(windowInfo.remainingPercent)}%`;
   }
@@ -225,34 +228,6 @@ function applyProviderUsageHudLayout() {
   providerUsageHud.style.setProperty("--provider-hud-scale", String(scale));
 }
 
-function renderHermesStatusRow(snapshot) {
-  const hs = (snapshot && snapshot.hermesStatus) || { status: "offline" };
-  const status = hs.status;
-  const labels = {
-    available: "Ready", thinking: "Thinking\u2026",
-    working: "Working\u2026", offline: "Offline", error: "Error",
-  };
-  const statusClass = {
-    available: "ok", thinking: "warning",
-    working: "warning", offline: "unavailable", error: "error",
-  }[status] || "unavailable";
-  const label = labels[status] || "Offline";
-  return (
-    '<div class="provider-usage-row provider-usage-hermes" data-provider="hermes" data-status="' + statusClass + '">' +
-      '<div class="provider-usage-head">' +
-        '<span>Hermes</span>' +
-      '</div>' +
-      '<div class="provider-usage-windows">' +
-        '<div class="provider-usage-window" data-status="' + statusClass + '">' +
-          '<div class="provider-usage-window-head">' +
-            '<span class="provider-usage-window-label">' + escapeHtml(label) + '</span>' +
-          '</div>' +
-        '</div>' +
-      '</div>' +
-    '</div>'
-  );
-}
-
 function renderProviderUsageHud() {
   if (!providerUsageHud) return;
   if (_inMiniMode || !providerUsageSnapshot || providerUsageSnapshot.hudEnabled === false || !providerUsageSnapshot.providers) {
@@ -263,7 +238,7 @@ function renderProviderUsageHud() {
   }
   providerUsageHud.classList.remove("hidden");
   const cards = providerUsageSnapshot.providers;
-  providerUsageHud.innerHTML = ["codex", "minimax"].map((provider) => {
+  providerUsageHud.innerHTML = ["codex", "minimax", "deepseek"].map((provider) => {
     const card = cards[provider] || { label: provider, status: "unavailable", windows: [] };
     const windows = Array.isArray(card.windows) ? card.windows : [];
     const windowsMarkup = windows.map((windowInfo) => {
@@ -299,7 +274,7 @@ function renderProviderUsageHud() {
         `<div class="provider-usage-windows">${windowsMarkup}</div>` +
       `</div>`
     );
-  }).join("") + renderHermesStatusRow(providerUsageSnapshot);
+  }).join("");
   applyProviderUsageHudLayout();
 }
 

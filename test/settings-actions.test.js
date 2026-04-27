@@ -80,7 +80,7 @@ describe("updateRegistry pure-data validators", () => {
       "soundMuted", "bubbleFollowPet", "hideBubbles",
       "showSessionId", "miniMode", "openAtLoginHydrated",
       "macTypingAwarenessEnabled", "macTypingPermissionPrompted", "macTypingPermissionDismissed",
-      "globalActivityEnabled", "globalActivityOnboardingShown",
+      "globalActivityEnabled", "globalActivityOnboardingShown", "remoteSshAutoBridgeEnabled",
     ]) {
       assert.strictEqual(updateRegistry[key](true, deps).status, "ok", `${key}(true)`);
       assert.strictEqual(updateRegistry[key](false, deps).status, "ok", `${key}(false)`);
@@ -108,6 +108,17 @@ describe("updateRegistry pure-data validators", () => {
     }, deps).status, "ok");
     assert.strictEqual(updateRegistry.globalActivityRules({ clipboardReaction: true }, deps).status, "error");
     assert.strictEqual(updateRegistry.globalActivityRules("nope", deps).status, "error");
+  });
+
+  it("remoteSshTrustedHosts validates entries", () => {
+    const deps = { snapshot: baseSnapshot };
+    assert.strictEqual(updateRegistry.remoteSshTrustedHosts({
+      "user@host": { enabled: true },
+    }, deps).status, "ok");
+    assert.strictEqual(updateRegistry.remoteSshTrustedHosts({
+      "user@host": { enabled: "yes" },
+    }, deps).status, "error");
+    assert.strictEqual(updateRegistry.remoteSshTrustedHosts("nope", deps).status, "error");
   });
 
   it("time check-in fields validate correctly", () => {
@@ -444,6 +455,38 @@ describe("hook commands", () => {
     assert.strictEqual(r.status, "error");
     assert.match(r.message, /disk locked/);
     assert.deepStrictEqual(calls, ["stop", "uninstall", "start"]);
+  });
+});
+
+describe("remote SSH host commands", () => {
+  it("retries a host and queues remote bridge setup", () => {
+    const r = commandRegistry.updateRemoteSshHost(
+      { target: "user@host", action: "retry" },
+      { snapshot: { remoteSshTrustedHosts: {} } }
+    );
+    assert.strictEqual(r.status, "ok");
+    assert.strictEqual(r.commit.remoteSshTrustedHosts["user@host"].lastStatus, "queued");
+  });
+
+  it("can disable and forget a host", () => {
+    const snapshot = {
+      remoteSshTrustedHosts: {
+        "user@host": { target: "user@host", enabled: true, lastStatus: "ok" },
+      },
+    };
+    const disabled = commandRegistry.updateRemoteSshHost(
+      { target: "user@host", action: "disable" },
+      { snapshot }
+    );
+    assert.strictEqual(disabled.status, "ok");
+    assert.strictEqual(disabled.commit.remoteSshTrustedHosts["user@host"].enabled, false);
+
+    const forgotten = commandRegistry.updateRemoteSshHost(
+      { target: "user@host", action: "forget" },
+      { snapshot }
+    );
+    assert.strictEqual(forgotten.status, "ok");
+    assert.strictEqual(forgotten.commit.remoteSshTrustedHosts["user@host"], undefined);
   });
 });
 

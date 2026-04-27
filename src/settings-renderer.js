@@ -103,6 +103,15 @@ const STRINGS = {
     rowTerminalStatusUnknown: "No checks run yet.",
     rowTerminalStatusOk: "Last check succeeded.",
     rowTerminalStatusError: "Last check failed.",
+    rowRemoteSshAutoBridge: "Remote SSH auto bridge",
+    rowRemoteSshAutoBridgeDesc: "Detect SSH sessions, ask once per server, then keep the Clawd bridge active for trusted hosts.",
+    rowRemoteSshAutoBridgeUnsupported: "This feature is available on macOS and Linux.",
+    rowRemoteSshHosts: "Trusted remote hosts",
+    rowRemoteSshHostsEmpty: "No trusted remote hosts yet. Open an SSH session and approve the setup prompt.",
+    actionRemoteSshRetry: "Retry",
+    actionRemoteSshDisable: "Disable",
+    actionRemoteSshEnable: "Enable",
+    actionRemoteSshForget: "Forget",
     actionTestTranslator: "Test Translator",
     actionShowBubbleLoading: "Show Bubble: Loading",
     actionShowBubbleSuccess: "Show Bubble: Success",
@@ -113,7 +122,9 @@ const STRINGS = {
     rowProviderUsageRefreshEnabled: "Background refresh",
     rowProviderUsageRefreshEnabledDesc: "Refresh provider usage every 10 minutes. MiniMax checks can take up to 5 minutes.",
     rowProviderUsageMiniMaxEnabled: "MiniMax best-effort",
-    rowProviderUsageMiniMaxEnabledDesc: "Keep a MiniMax slot in the HUD even when live usage is unavailable or Hermes cannot initialize.",
+    rowProviderUsageMiniMaxEnabledDesc: "Keep a MiniMax slot in the HUD even when live usage is unavailable.",
+    rowProviderUsageDeepSeekEnabled: "DeepSeek usage",
+    rowProviderUsageDeepSeekEnabledDesc: "Show DeepSeek billing or usage data in the HUD instead of the Hermes status row.",
     rowProviderUsageStaleAfter: "Stale threshold (minutes)",
     rowProviderUsageStaleAfterDesc: "How long a usage snapshot stays fresh before it is treated as stale.",
     rowProviderUsageStatus: "Provider usage status",
@@ -358,6 +369,15 @@ const STRINGS = {
     rowTerminalStatusUnknown: "尚未运行检查。",
     rowTerminalStatusOk: "最近一次检查成功。",
     rowTerminalStatusError: "最近一次检查失败。",
+    rowRemoteSshAutoBridge: "远程 SSH 自动桥接",
+    rowRemoteSshAutoBridgeDesc: "检测 SSH 会话，对每台服务器询问一次，然后为信任的主机保持 Clawd bridge。",
+    rowRemoteSshAutoBridgeUnsupported: "此功能支持 macOS 和 Linux。",
+    rowRemoteSshHosts: "已信任远程主机",
+    rowRemoteSshHostsEmpty: "还没有信任的远程主机。打开 SSH 会话并允许设置提示后会出现在这里。",
+    actionRemoteSshRetry: "重试",
+    actionRemoteSshDisable: "禁用",
+    actionRemoteSshEnable: "启用",
+    actionRemoteSshForget: "忘记",
     actionTestTranslator: "测试翻译",
     actionShowBubbleLoading: "显示气泡：加载中",
     actionShowBubbleSuccess: "显示气泡：成功",
@@ -369,6 +389,8 @@ const STRINGS = {
     rowProviderUsageRefreshEnabledDesc: "每 10 分钟刷新一次 provider 用量。MiniMax 检查最多可能需要 5 分钟。",
     rowProviderUsageMiniMaxEnabled: "MiniMax 尽力而为",
     rowProviderUsageMiniMaxEnabledDesc: "即使暂时拿不到实时用量，或 Hermes 无法初始化，也保留 MiniMax 一栏。",
+    rowProviderUsageDeepSeekEnabled: "DeepSeek 用量",
+    rowProviderUsageDeepSeekEnabledDesc: "在 HUD 中显示 DeepSeek 账单或用量数据，替代 Hermes 状态行。",
     rowProviderUsageStaleAfter: "过期阈值（分钟）",
     rowProviderUsageStaleAfterDesc: "超过这个时间后，用量快照会被视为过期。",
     rowProviderUsageStatus: "Provider 用量状态",
@@ -2252,6 +2274,11 @@ function buildProviderUsageSection() {
     labelKey: "rowProviderUsageMiniMaxEnabled",
     descKey: "rowProviderUsageMiniMaxEnabledDesc",
   }));
+  wrap.appendChild(buildSwitchRow({
+    key: "providerUsageDeepSeekEnabled",
+    labelKey: "rowProviderUsageDeepSeekEnabled",
+    descKey: "rowProviderUsageDeepSeekEnabledDesc",
+  }));
   wrap.appendChild(buildTimeCheckinTextRow({
     key: "providerUsageStaleAfterMinutes",
     labelKey: "rowProviderUsageStaleAfter",
@@ -2455,6 +2482,8 @@ function buildDiagnosticsSection() {
   content.className = "section-rows";
   content.appendChild(buildTranslatorDiagnosticsRow());
   content.appendChild(buildTerminalDiagnosticsRow());
+  content.appendChild(buildRemoteSshAutoBridgeRow());
+  content.appendChild(buildRemoteSshHostsRow());
   content.appendChild(buildGlobalActivityDiagnosticsRow());
   content.appendChild(buildTimeCheckinPreviewRow());
   content.appendChild(buildProviderUsagePreviewRow());
@@ -3027,6 +3056,69 @@ function buildGlobalActivityDiagnosticsRow() {
   ctrl.appendChild(buildActionButton("actionTestGlobalListening", () => window.settingsAPI.runGlobalActivityTest("mediaPlaybackReaction")));
   row.appendChild(ctrl);
   return row;
+}
+
+function buildRemoteSshAutoBridgeRow() {
+  const status = snapshot && snapshot.remoteSshAutoBridgeStatus;
+  const supported = !!(status && status.supported);
+  return buildSwitchRow({
+    key: "remoteSshAutoBridgeEnabled",
+    labelKey: "rowRemoteSshAutoBridge",
+    descKey: "rowRemoteSshAutoBridgeDesc",
+    descExtraKey: supported ? null : "rowRemoteSshAutoBridgeUnsupported",
+    disabled: !supported,
+  });
+}
+
+function buildRemoteSshHostsRow() {
+  const hosts = snapshot && snapshot.remoteSshTrustedHosts && typeof snapshot.remoteSshTrustedHosts === "object"
+    ? snapshot.remoteSshTrustedHosts
+    : {};
+  const entries = Object.values(hosts)
+    .filter((entry) => entry && typeof entry === "object" && entry.target)
+    .sort((a, b) => String(a.target).localeCompare(String(b.target)));
+  const fragment = document.createDocumentFragment();
+  if (!entries.length) {
+    const row = document.createElement("div");
+    row.className = "row";
+    row.innerHTML =
+      `<div class="row-text">` +
+        `<span class="row-label">${escapeHtml(t("rowRemoteSshHosts"))}</span>` +
+        `<span class="row-desc">${escapeHtml(t("rowRemoteSshHostsEmpty"))}</span>` +
+      `</div>`;
+    fragment.appendChild(row);
+    return fragment;
+  }
+  for (const entry of entries) {
+    const row = document.createElement("div");
+    row.className = "row";
+    const status = entry.lastStatus || "unknown";
+    const desc = `${entry.enabled === false ? "disabled" : status}${entry.lastError ? `: ${entry.lastError}` : ""}`;
+    row.innerHTML =
+      `<div class="row-text">` +
+        `<span class="row-label">${escapeHtml(entry.target)}</span>` +
+        `<span class="row-desc">${escapeHtml(desc)}</span>` +
+      `</div>`;
+    const ctrl = document.createElement("div");
+    ctrl.className = "row-control";
+    ctrl.style.gap = "8px";
+    ctrl.style.flexWrap = "wrap";
+    ctrl.appendChild(buildActionButton("actionRemoteSshRetry", () => window.settingsAPI.command("updateRemoteSshHost", {
+      target: entry.target,
+      action: "retry",
+    })));
+    ctrl.appendChild(buildActionButton(entry.enabled === false ? "actionRemoteSshEnable" : "actionRemoteSshDisable", () => window.settingsAPI.command("updateRemoteSshHost", {
+      target: entry.target,
+      action: entry.enabled === false ? "enable" : "disable",
+    })));
+    ctrl.appendChild(buildActionButton("actionRemoteSshForget", () => window.settingsAPI.command("updateRemoteSshHost", {
+      target: entry.target,
+      action: "forget",
+    })));
+    row.appendChild(ctrl);
+    fragment.appendChild(row);
+  }
+  return fragment;
 }
 
 function readTimeCheckinGenerator() {

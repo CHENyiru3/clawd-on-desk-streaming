@@ -5,6 +5,7 @@
 | Limitation | Details |
 |---|---|
 | **Codex CLI: no terminal focus** | Codex sessions use JSONL log polling which doesn't carry terminal PID info. Clicking Clawd won't jump to the Codex terminal. Claude Code and Copilot CLI work fine. |
+| **Codex CLI: permission notifications are read-only** | Clawd can show a Codex approval prompt as a notification when log polling detects it, including for remote SSH sessions after the monitor is deployed. Codex does not expose a blocking approval API, so approving or rejecting still happens in the Codex terminal (`y`, `p`, or `esc`). |
 | **Codex CLI: Windows hooks disabled** | Codex hardcodes hooks off on Windows, so we poll log files instead. This means ~1.5s latency vs near-instant for hook-based agents. |
 | **Copilot CLI: manual hook setup** | Copilot hooks require manually creating `~/.copilot/hooks/hooks.json`. Claude Code and Codex work out of the box. |
 | **Copilot CLI: no permission bubble** | Copilot's `preToolUse` hook only supports deny, not the full allow/deny flow. Permission bubbles only work with Claude Code. |
@@ -12,6 +13,8 @@
 | **Gemini CLI: no permission bubble** | Gemini handles tool approval inside the terminal. File polling can't intercept or display approval requests. |
 | **Gemini CLI: no terminal focus** | Session JSON doesn't carry terminal PID info, same limitation as Codex. |
 | **Gemini CLI: polling latency** | ~1.5s poll interval + 4s defer window for batching tool completion signals. Noticeably slower than hook-based agents. |
+| **Remote SSH: first-time approval and SSH auth required** | On macOS/Linux, Clawd can detect local SSH sessions, including `gg`/goto-ssh aliases, and ask once per host before running the automatic bridge setup. The host still needs working SSH auth, permission to copy hooks, and server-side forwarding support. `gg` aliases must be reachable as `ssh <alias>` during deploy. If detection is disabled or unavailable, run `bash scripts/remote-deploy.sh user@host --auto` manually. |
+| **Remote SSH: no terminal focus** | Remote sessions intentionally skip PID collection because server PIDs are meaningless on the local desktop. The Sessions menu can show the remote host, but clicking cannot focus the exact remote terminal session. |
 | **Typing awareness: macOS only** | The new `composing` state depends on macOS Input Monitoring. Windows and Linux keep the old behavior for now, and macOS users must grant permission before Clawd can react to system-wide typing. |
 | **Kiro CLI: no session tracking** | Kiro CLI stdin JSON has no session_id — all Kiro sessions are merged into a single tracked session. |
 | **Kiro CLI: no SessionEnd** | Kiro CLI has no session end event, so Clawd can't detect when a Kiro session ends. |

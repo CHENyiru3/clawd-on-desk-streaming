@@ -16,7 +16,7 @@ describe("provider-usage-layout", () => {
     assert.ok(scale >= 0.72);
   });
 
-  it("fits a taller hud that includes the Hermes status row", () => {
+  it("fits a taller hud with three provider rows", () => {
     const scale = computeHudScale({
       containerHeight: 200,
       contentHeight: 260,

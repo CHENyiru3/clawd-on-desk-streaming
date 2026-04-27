@@ -280,32 +280,7 @@ html, body {
   background: rgba(249, 246, 242, 0.88);
 }
 
-.provider-usage-row[data-provider="minimax"] .provider-usage-window-meta {
+.provider-usage-row[data-provider="minimax"] .provider-usage-window-meta,
+.provider-usage-row[data-provider="deepseek"] .provider-usage-window-meta {
   letter-spacing: -0.01em;
-}
-
-/* Hermes status row */
-.provider-usage-hermes {
-  border-left: 3px solid #8b8680;
-}
-.provider-usage-hermes[data-status="warning"] {
-  border-left-color: #f59e0b;
-}
-.provider-usage-hermes[data-status="error"] {
-  border-left-color: #ef4444;
-}
-.provider-usage-hermes[data-status="unavailable"] {
-  border-left-color: #9ca3af;
-}
-.provider-usage-hermes .provider-usage-window-label {
-  color: #5c5046;
-}
-.provider-usage-hermes[data-status="warning"] .provider-usage-window-label {
-  color: #f59e0b;
-}
-.provider-usage-hermes[data-status="error"] .provider-usage-window-label {
-  color: #ef4444;
-}
-.provider-usage-hermes[data-status="unavailable"] .provider-usage-window-label {
-  color: #6b7280;
 }

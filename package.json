@@ -50,12 +50,14 @@
       "assets/sounds/**/*",
       "assets/tray-icon*.png",
       "hooks/**/*",
+      "scripts/remote-deploy.sh",
       "extensions/**/*",
       "agents/**/*",
       "themes/**/*"
     ],
     "asarUnpack": [
       "hooks/**/*",
+      "scripts/remote-deploy.sh",
       "extensions/**/*"
     ],
     "publish": null

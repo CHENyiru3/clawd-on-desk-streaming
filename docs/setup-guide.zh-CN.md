@@ -16,17 +16,36 @@
 
 <img src="../assets/screenshot-remote-ssh.png" width="560" alt="远程 SSH — 来自树莓派的权限气泡">
 
-Clawd 支持通过 SSH 反向端口转发感知远程服务器上的 AI Agent 状态。Hook 事件和权限请求通过 SSH 隧道传回本地 Clawd，无需修改 Clawd 本体代码。
+Clawd 支持通过 SSH 反向端口转发感知远程服务器上的 AI Agent 状态。Hook 事件和权限请求通过 SSH 隧道传回本地 Clawd。
 
-**一键部署：**
+如果你在本地用 Ghostty 等终端 SSH 到服务器，并在服务器上运行 `claude` 或 `codex`，就需要这个远程桥接。Clawd 可在 macOS/Linux 上检测本地 SSH 会话并对每台主机询问一次，但它无法仅从本地 Ghostty 进程推断远程 Agent 状态；远程服务器仍需通过 hooks 或 Codex 远程监控脚本把状态传回本地。
+
+**使用 Ghostty 或其他终端时自动配置：**
+
+1. 先在本地启动 Clawd。
+2. 打开平常使用的 SSH 会话，例如 `ssh user@远程主机` 或 `gg my-server`。
+3. Clawd 发现新的 SSH 主机后，允许远程桥接提示。
+
+允许后，Clawd 会记住这台主机或 `gg` alias，并在后台执行同一套自动部署流程：复制 hooks、以远程模式注册 Claude Code hooks、启动受管理的反向隧道、重启远程 Codex 监控，并验证远程服务器可以连回本地 Clawd。已信任主机可在 Settings -> AI Work -> Diagnostics 中管理。
+
+**手动一键配置：**
 
 ```bash
-bash scripts/remote-deploy.sh user@远程主机
+bash scripts/remote-deploy.sh user@远程主机 --auto
 ```
 
-脚本会将 hook 文件复制到远程服务器，以远程模式注册 Claude Code hooks，并打印 SSH 配置指引。
+如果你想在打开普通终端会话前预先配置主机，或关闭了自动提示，可以手动执行这个命令。
 
-**SSH 配置**（添加到本地 `~/.ssh/config`）：
+如果 `node` 只有在激活 conda 环境后才可用，请传入环境名：
+
+```bash
+bash scripts/remote-deploy.sh user@远程主机 --auto --conda-env simulator
+```
+
+部署脚本会在需要 Node 的步骤前激活该 conda 环境，并保存解析出的 Node 路径，让远程 Codex 监控之后继续使用这个环境里的 Node。
+一次 conda 配置成功后，后续重试通常可以只用普通的 `--auto`，因为脚本会复用远程已保存的 Node 路径。
+
+**手动 SSH 配置**（不使用 `--auto` 时才需要；添加到本地 `~/.ssh/config`）：
 
 ```
 Host my-server
@@ -39,13 +58,30 @@ Host my-server
 
 **工作原理：**
 - **Claude Code** — 远程 hook 将状态 POST 到 `localhost:23333`，SSH 隧道转发回本地 Clawd。权限气泡也能正常弹出——HTTP 往返通过隧道完成。
-- **Codex CLI** — 独立的日志监控脚本（`codex-remote-monitor.js`）在远程轮询 JSONL 文件，通过同一隧道 POST 状态变化。在远程启动：`node ~/.claude/hooks/codex-remote-monitor.js --port 23333`
+- **Codex CLI** — 独立的日志监控脚本（`codex-remote-monitor.js`）在远程轮询 JSONL 文件，通过同一隧道 POST 状态变化。`--auto` 模式会通过 `~/.claude/hooks/clawd-remote-monitor.sh` 启动它。Codex 审批提示可以显示为 Clawd 的只读通知，但真正的 `y` / `p` / `esc` 仍需在远程终端里输入。
 
 远程 hook 以 `CLAWD_REMOTE` 模式运行，跳过 PID 采集（远程 PID 在本地无意义）。远程会话不支持终端聚焦。
 
-> 感谢 [@Magic-Bytes](https://github.com/Magic-Bytes) 提出 SSH 隧道方案（[#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)）。
+**Ghostty / SSH 排查：**
+- 先在本地启动 Clawd，再启动或重连 SSH 会话。
+- 在 macOS/Linux 上，确认 Settings -> AI Work -> Diagnostics 中的 Remote SSH auto bridge 已启用。每台主机第一次出现时需要允许提示。
+- `gg` alias 会被直接检测。部署步骤仍会执行 `ssh <alias>`，所以如果 alias 不在 `~/.ssh/config` 中，请确认 goto-ssh 的 SSH config 集成已启用。
+- 如果没有出现提示，请手动执行 `bash scripts/remote-deploy.sh user@远程主机 --auto`；它会为普通 Ghostty 使用方式配置后台隧道和监控。
+- 手动配置 Claude Code 时，需要在服务器上执行 `node ~/.claude/hooks/install.js --remote`。
+- 手动配置 Codex CLI 时，需要在服务器上持续运行 `node ~/.claude/hooks/codex-remote-monitor.js`。
+- 如果 Clawd 仍然睡眠，用 `ssh -v my-server` 确认 remote forward 已被接受。有些服务器会禁用 `AllowTcpForwarding`。
 
-> 树莓派实战详细教程见 [guide-remote-ssh.md](guide-remote-ssh.md)。
+`--auto` 之后可用这些命令管理远程监控：
+
+```bash
+ssh my-server '~/.claude/hooks/clawd-remote-monitor.sh status'
+ssh my-server '~/.claude/hooks/clawd-remote-monitor.sh restart'
+ssh my-server '~/.claude/hooks/clawd-remote-monitor.sh stop'
+```
+
+部署脚本也会打印用于停止本地后台隧道的精确 `ssh -S ... -O exit` 命令。
+
+> 感谢 [@Magic-Bytes](https://github.com/Magic-Bytes) 提出 SSH 隧道方案（[#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)）。
 
 ## WSL（Windows Subsystem for Linux）
 

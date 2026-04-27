@@ -49,8 +49,10 @@ tools/check_dark.py
 # Debug logs
 logs/
 
-# GIF recording tools (not part of main project)
+# Support/tool scripts are opt-in tracked below; ignore other ad hoc scripts.
 scripts/*
+!scripts/provider-usage-checker/
+!scripts/provider-usage-checker/**
 !scripts/remote-deploy.sh
 !scripts/run-clawdbot-stress.sh
 !scripts/monitor-clawd-resources.sh

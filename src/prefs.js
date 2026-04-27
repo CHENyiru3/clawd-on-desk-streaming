@@ -19,6 +19,7 @@
 const fs = require("fs");
 const path = require("path");
 const { isPlainObject } = require("./theme-loader");
+const { defaultProviderUsageCheckerScriptPath } = require("./provider-usage-checker-path");
 
 const CURRENT_VERSION = 1;
 
@@ -86,6 +87,12 @@ const SCHEMA = {
     normalize: normalizeGlobalActivityRules,
   },
   globalActivityOnboardingShown: { type: "boolean", default: false },
+  remoteSshAutoBridgeEnabled: { type: "boolean", default: process.platform === "darwin" || process.platform === "linux" },
+  remoteSshTrustedHosts: {
+    type: "object",
+    defaultFactory: () => ({}),
+    normalize: normalizeRemoteSshTrustedHosts,
+  },
   timeCheckinEnabled: { type: "boolean", default: process.platform === "darwin" },
   timeCheckinScheduleMode: {
     type: "string",
@@ -122,6 +129,7 @@ const SCHEMA = {
     validate: (v) => v === null || (typeof v === "number" && Number.isFinite(v) && v >= 0),
   },
   providerUsageMiniMaxEnabled: { type: "boolean", default: true },
+  providerUsageDeepSeekEnabled: { type: "boolean", default: true },
   providerUsageStaleAfterMinutes: {
     type: "number",
     default: 30,
@@ -131,7 +139,7 @@ const SCHEMA = {
     type: "object",
     defaultFactory: () => ({
       python: "python3",
-      scriptPath: "/Users/eric_yiru/Desktop/Github/ai_skills/ai-ml-skills/utility/provider-usage-checker/scripts/check_usage.py",
+      scriptPath: defaultProviderUsageCheckerScriptPath(),
       timeoutMs: 300000,
       browser: "auto",
     }),
@@ -405,6 +413,29 @@ function normalizeAgents(value, defaultsValue) {
       }
     }
     if (touched) out[id] = merged;
+  }
+  return out;
+}
+
+function normalizeRemoteSshTrustedHosts(value, defaultsValue) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return defaultsValue || {};
+  const out = {};
+  for (const [target, entry] of Object.entries(value)) {
+    if (typeof target !== "string" || !target.trim()) continue;
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
+    const clean = {
+      target: target.trim(),
+      enabled: entry.enabled !== false,
+      prefix: typeof entry.prefix === "string" ? entry.prefix.trim() : "",
+      lastStatus: typeof entry.lastStatus === "string" && entry.lastStatus
+        ? entry.lastStatus
+        : "unknown",
+      lastError: typeof entry.lastError === "string" && entry.lastError ? entry.lastError : null,
+      lastCheckedAt: typeof entry.lastCheckedAt === "number" && Number.isFinite(entry.lastCheckedAt)
+        ? Math.max(0, Math.floor(entry.lastCheckedAt))
+        : null,
+    };
+    out[clean.target] = clean;
   }
   return out;
 }

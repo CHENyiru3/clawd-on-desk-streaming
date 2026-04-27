@@ -16,17 +16,36 @@
 
 <img src="../assets/screenshot-remote-ssh.png" width="560" alt="Remote SSH — permission bubble from Raspberry Pi">
 
-Clawd can sense AI agent activity on remote servers via SSH reverse port forwarding. Hook events and permission requests travel through the SSH tunnel back to your local Clawd — no code changes needed on the Clawd side.
+Clawd can sense AI agent activity on remote servers via SSH reverse port forwarding. Hook events and permission requests travel through the SSH tunnel back to your local Clawd.
 
-**One-click deploy:**
+This bridge is required when you use a local terminal app such as Ghostty to SSH into a server and run `claude` or `codex` there. Clawd can detect local SSH sessions on macOS/Linux and ask once per host, but it cannot infer remote agent activity from the local Ghostty process alone; the server must send state back through remote hooks or the Codex remote monitor.
+
+**Automatic setup while using Ghostty or another terminal:**
+
+1. Start Clawd locally.
+2. Open your normal SSH session, for example `ssh user@remote-host` or `gg my-server`.
+3. When Clawd sees a new SSH host, approve the remote bridge prompt.
+
+After approval, Clawd remembers the host or `gg` alias and runs the same automatic deploy path in the background: copy hooks, register Claude Code remote hooks, start a managed reverse tunnel, restart the remote Codex monitor, and verify that the remote server can reach local Clawd. You can manage trusted hosts under Settings -> AI Work -> Diagnostics.
+
+**Manual one-command setup:**
 
 ```bash
-bash scripts/remote-deploy.sh user@remote-host
+bash scripts/remote-deploy.sh user@remote-host --auto
 ```
 
-This copies hook files to the remote server, registers Claude Code hooks in remote mode, and prints SSH configuration instructions.
+Use this if you want to configure a host before opening a normal terminal session, or if the automatic prompt is disabled.
 
-**SSH configuration** (add to your local `~/.ssh/config`):
+If `node` is only available after activating a conda environment, pass that environment name:
+
+```bash
+bash scripts/remote-deploy.sh user@remote-host --auto --conda-env simulator
+```
+
+The deploy script will activate the conda env for Node-dependent setup and save the resolved Node path so the remote Codex monitor keeps using that env's Node later.
+After one successful conda-backed setup, later retries can usually use plain `--auto` because the saved remote Node path is reused.
+
+**Manual SSH configuration** (only needed if you do not use `--auto`; add to your local `~/.ssh/config`):
 
 ```
 Host my-server
@@ -39,9 +58,28 @@ Host my-server
 
 **How it works:**
 - **Claude Code** — command hooks on the remote server POST state changes to `localhost:23333`, which the SSH tunnel forwards back to your local Clawd. Permission bubbles work too — the HTTP round-trip goes through the tunnel.
-- **Codex CLI** — a standalone log monitor (`codex-remote-monitor.js`) polls JSONL files on the remote server and POSTs state changes through the same tunnel. Start it on the remote: `node ~/.claude/hooks/codex-remote-monitor.js --port 23333`
+- **Codex CLI** — a standalone log monitor (`codex-remote-monitor.js`) polls JSONL files on the remote server and POSTs state changes through the same tunnel. In `--auto` mode, Clawd starts it through `~/.claude/hooks/clawd-remote-monitor.sh`. Codex approval prompts can appear as read-only Clawd notifications, but the actual `y` / `p` / `esc` response must still be typed in the remote terminal.
 
 Remote hooks run in `CLAWD_REMOTE` mode which skips PID collection (remote PIDs are meaningless locally). Terminal focus is not available for remote sessions.
+
+**Ghostty / SSH troubleshooting:**
+- Keep Clawd running locally before starting or reconnecting the SSH session.
+- On macOS/Linux, keep Remote SSH auto bridge enabled in Settings -> AI Work -> Diagnostics. Approve the first prompt for each host.
+- `gg` aliases are detected directly. The deploy step still uses `ssh <alias>`, so make sure goto-ssh's SSH config integration is enabled for aliases that are not already in `~/.ssh/config`.
+- If the prompt does not appear, run `bash scripts/remote-deploy.sh user@remote-host --auto` manually; it sets up the background tunnel and monitor for normal Ghostty usage.
+- For manual Claude Code setup, run `node ~/.claude/hooks/install.js --remote` on the server.
+- For manual Codex CLI setup, keep `node ~/.claude/hooks/codex-remote-monitor.js` running on the server while Codex is active.
+- If Clawd still sleeps, run `ssh -v my-server` and confirm the remote forward was accepted. Some servers disable `AllowTcpForwarding`.
+
+Remote monitor controls after `--auto`:
+
+```bash
+ssh my-server '~/.claude/hooks/clawd-remote-monitor.sh status'
+ssh my-server '~/.claude/hooks/clawd-remote-monitor.sh restart'
+ssh my-server '~/.claude/hooks/clawd-remote-monitor.sh stop'
+```
+
+The deploy script also prints the exact local `ssh -S ... -O exit` command for stopping the background tunnel.
 
 > Thanks to [@Magic-Bytes](https://github.com/Magic-Bytes) for the original SSH tunneling idea ([#9](https://github.com/rullerzhou-afk/clawd-on-desk/issues/9)).
 

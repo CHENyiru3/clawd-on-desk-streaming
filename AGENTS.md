@@ -47,12 +47,18 @@ Supported or partially supported surfaces found in the codebase include:
 - Settings persistence, tray/menu actions, i18n, startup window state, and login item helpers.
 - macOS activity collectors for typing, frontmost app, clipboard, media, and related global activity rules.
 - Clipboard history/sanitization, translation bubbles, time check-ins, provider usage summaries, update bubbles, and Hermes chat/check-in helpers.
-    - MiniMax usage extraction surfaces the 5-hour primary window (scraped from the quota N/M count, not the CSS-rendered percentage) — fixing a longstanding wrong-percentage display caused by regex mis-matching copyright year numbers.
+    - MiniMax usage extraction surfaces the 5-hour primary window and treats the website's visible percentage as used/progress, so the HUD displays remaining quota as `100 - used%` instead of mistaking the shown number for leftover quota.
 - Translation bubble positioning: the translate bubble is always pet-attached — it uses hitbox-center alignment (independent of the global `bubbleFollowPet` setting) with a three-tier placement model (above-pet → below-pet → side). It uses `showInactive()` instead of `show()` to avoid focus stealing, calls `guardAlwaysOnTop` on creation and after height changes, and re-applies macOS floating visibility after showing. Bounds are computed by the pure helper `src/translate-bubble-position.js` and repositioned whenever the pet moves, the bubble reports measured height, or display metrics change.
 - Settings window AI Work tab: AI-related controls are consolidated into a single "AI Work" tab replacing the old "Agents" tab. The tab contains Hermes status and chat config (with Advanced section for extra args textarea), Agents & Permissions, Translation & MiniMax (with visible hotkey text "Ctrl+Shift+T"), Provider Usage (with Advanced section exposing Python executable, checker script path, browser selection, and timeout ms), Time Check-ins, and a collapsed Diagnostics area. The General tab retains Appearance, Startup, Bubbles, and Global Activity. Disabled Shortcuts and About placeholder tabs are removed. The `hermesChat` field is now validated in `updateRegistry` (command non-empty string, args string array, cwd string, timeoutMs bounded 10000–600000). Time check-in timeout validation max is corrected to 120000ms. Hermes settings buttons use `soft-btn` styling and the loading text uses a proper i18n key.
-- A pet-adjacent Hermes chat surface that opens on the left side of the pet, plus a right-side provider/status HUD.
+- A pet-adjacent Hermes chat surface that opens on the left side of the pet, plus a right-side provider usage HUD for Codex, MiniMax, and DeepSeek. Hermes status remains visible in the chat surface rather than occupying a HUD row.
 - Hermes chat panel improvements: draggable titlebar (CSS `-webkit-app-region`), session-persistent manual drag position, file/folder drag-and-drop with `@"path"` context insertion and multi-item handover guidance, and visually distinct Clear/Close titlebar buttons.
 - Hermes permission bridge: dangerous commands in `hermes chat` sessions are routed through Clawd's permission bubble UI via a Python stdlib bridge (injected via `PYTHONPATH`), filesystem poll-file reverse channel, and the existing `POST /permission` Hermes branch — no modification to the installed Hermes package.
+- Remote SSH support is consent-based state forwarding, not pure terminal observation. When Claude Code or Codex runs on a server through a local terminal such as Ghostty, Clawd can detect local SSH sessions on macOS/Linux, including `gg`/goto-ssh aliases, and ask once per host, but the remote server must still have Clawd hooks/monitors installed and a reverse forwarding path back to the local Clawd HTTP port.
+    - Approved hosts are remembered in preferences. Clawd then runs the same automatic setup path used by `scripts/remote-deploy.sh user@host --auto`: deploy remote hooks, register Claude Code remote hooks, start a managed background SSH reverse tunnel, restart the Codex remote monitor supervisor, and verify the remote can reach local Clawd.
+    - The auto bridge keeps normal Ghostty SSH usage viable after approval: users can continue opening ordinary SSH shells while the managed background tunnel and remote Codex monitor carry Clawd state back to the desktop pet.
+    - Remote Codex permission prompts can surface as read-only Clawd notification bubbles when the JSONL monitor detects Codex waiting for approval. Clawd cannot answer Codex's TUI prompt because Codex does not expose a blocking approval API; users still answer `y`, `p`, or `esc` in the remote terminal.
+    - Remote deploy supports Node.js inside conda via `--conda-env NAME`; the deploy script activates the env for Node-dependent setup and writes a remote `clawd-remote-env` file so the Codex monitor supervisor uses the same Node binary.
+    - Settings diagnostics expose the remote SSH auto bridge toggle and trusted-host retry/disable/forget controls.
 - Unit tests under `test/` for many non-Electron and extracted logic modules, including `chat-drop-paths.js` and `chat-panel-layout.js`.
 
 Next-stage status:
@@ -60,6 +66,7 @@ Next-stage status:
 - Achieved: Clawd already has the core frontend foundation: theme-driven pet rendering, hit-window input handling, deterministic state mapping, click/drag reactions, mini mode, permission/status bubbles, a right-side provider usage HUD, and initial Hermes chat/check-in helpers.
 - Achieved: The Hermes chat surface is oriented as a left-side pet companion board, and Hermes availability/activity can be reflected in the desktop UI without asking Hermes to choose animations.
 - Achieved: Hermes permission bridge routes dangerous-command approval through Clawd's permission bubble UI. The Python stdlib bridge (`hooks/hermes-permission-bridge.py`) is injected via `PYTHONPATH` into the spawned Hermes child process; a tempfile-based poll channel (`POST /permission` → bubble → poll file) provides the reverse channel without modifying the Hermes package.
+- Achieved: Remote Ghostty/SSH workflows can be detected locally on macOS/Linux, approved once per host, and automatically bridged through the `remote-deploy.sh --auto` path, including remote hook deployment, background reverse tunnel setup, remote Codex monitor supervision, and a connectivity check.
 - Partially achieved: Hermes exists as a backend path, but it is not yet the central durable task backbone for longer-running workflows.
 - Left to build: Hermes API Server/Gateway integration and richer lifecycle-to-state mapping for task-level workflows.
 - Main optimization target: remove any need for Hermes or another LLM to decide animations. The model should solve functional tasks; Clawd should translate request lifecycle into UI state.
@@ -69,6 +76,7 @@ Known constraints remain:
 - Electron window, tray, and full end-to-end desktop behavior are not comprehensively automated.
 - Some agent integrations have inherent limitations because their upstream tools expose different hook, permission, and process metadata.
 - Platform support must be treated as a product surface, not an afterthought; a feature that works only on one OS needs clear fallback behavior.
+- Remote SSH workflows must document their setup boundary clearly: local SSH process detection can identify candidate hosts, but remote Claude/Codex activity requires remote-side hooks/log monitoring plus an active reverse tunnel. Remote sessions should show host identity where possible and must not promise local terminal focusing.
 
 ## Codebase Hygiene
 
@@ -77,7 +85,7 @@ There is no confirmed massive tracked runtime dead code at the current baseline.
 - Core runtime: `src/`, `agents/`, `hooks/`, `themes/`, and shipped `assets/`.
 - Tests: `test/` and focused manual smoke scripts such as root `test-*.sh`.
 - Documentation/specs: `AGENTS.md`, `README*`, and tracked files under `docs/`.
-- Non-core support: `perf/`, resource/stress scripts, and `tools/` artwork or pipeline helpers.
+- Non-core support: `perf/`, resource/stress scripts, the repo-local provider usage checker under `scripts/provider-usage-checker/`, and `tools/` artwork or pipeline helpers.
 - Experimental path: study-supervisor assets and scripts, including `scripts/supervisor.py`, `requirements-study-supervisor.txt`, `themes/study-supervisor/`, and the `/supervisor` state endpoint.
 - Generated output: `dist/` is ignored build output and must not be treated as source or roadmap material.
 
@@ -118,6 +126,7 @@ Useful commands:
 - Validate and sanitize third-party theme assets through the existing theme flow.
 - Avoid large rewrites of `src/main.js`; prefer extracting focused modules when changing shared behavior.
 - Maintain backward compatibility for hook registration, auto-start behavior, and settings migrations across macOS, Windows, and Linux.
+- Keep remote SSH behavior explicit and reliable. Detection of local `ssh` processes may trigger a one-time approval/setup flow, but Clawd still cannot infer agent activity inside an arbitrary SSH session from the terminal alone; remote agent state must be sent back through supported hooks, monitors, or a future documented gateway path.
 - Add or update tests in `test/` for behavior changes whenever the logic can be exercised outside a live Electron window.
 - Do not ask Hermes or any LLM to choose a Clawd animation such as `juggling`, `sweeping`, or `error`. Animation choice is a Clawd frontend responsibility.
 - Prefer Hermes API Server/Gateway for the next-stage backbone. If Hermes is offline, Clawd should show setup/status information rather than silently falling back to a different execution path.
@@ -157,7 +166,7 @@ Status: in progress.
 Product shape:
 
 - Center: Clawd pet remains the core visual actor and activity indicator.
-- Right: a compact status board shows existing provider budgets and future Hermes health/activity status.
+- Right: a compact status board shows provider budget/usage signals, including Codex, MiniMax, and DeepSeek.
 - Left: a simple transparent board sits beside the pet and expands into Hermes chat/input when opened.
 - Interaction: single click remains non-invasive and keeps current focus behavior; double click opens the left Hermes board.
 - Backend: Hermes is the primary backbone for complex tasks, skills, memory, and future delegation.
@@ -169,8 +178,9 @@ Completed so far:
 - The Hermes chat panel sits on the left side of the pet.
 - The Hermes chat panel supports a draggable titlebar, session-persistent manual position, file/folder drop context insertion, and visually distinct Clear and Close controls.
 - Hermes dangerous-command permission requests can route through Clawd's permission bubble UI while preserving the underlying agent fallback path.
-- The right-side provider usage HUD exists and includes MiniMax-aware refresh behavior.
+- The right-side provider usage HUD exists and includes MiniMax-aware and DeepSeek-aware refresh behavior.
 - The translation bubble is pet-attached and aligned above the pet with desktop-safe fallback positioning.
+- Remote SSH setup can auto-detect local macOS/Linux SSH sessions, ask once per host, then use the `--auto` flow for Ghostty/server workflows: deploy remote hooks, establish a managed reverse tunnel, supervise the remote Codex monitor, and verify connectivity from the server to local Clawd.
 
 Currently in progress:
 
@@ -182,7 +192,7 @@ Still pending:
 
 - Prefer Hermes API Server/Gateway as the primary backend path once it is stable enough for desktop integration.
 - Expand Hermes lifecycle mapping beyond one-shot chat into durable task/workflow states.
-- Add Hermes health/activity status into the compact provider/status board.
+- Keep DeepSeek usage visible in the compact provider HUD while Hermes health/activity stays in the Hermes chat surface.
 
 Expected outcomes:
 

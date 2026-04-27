@@ -25,9 +25,11 @@ const initTimeCheckinBubble = require("./time-checkin-bubble");
 const createProviderUsageRuntime = require("./provider-usage-runtime");
 const { createEmptyUsageSnapshot, mergeUsageSnapshot, withHermesStatus } = require("./provider-usage-model");
 const { fetchProviderUsageSnapshots } = require("./provider-usage-fetchers");
+const { resolveProviderUsageCheckerScriptPath } = require("./provider-usage-checker-path");
 const { buildFallbackSummary } = require("./provider-usage-summary-fallback");
 const { resolveStartupWindowState } = require("./startup-window-state");
 const { computeLeftChatPanelBounds } = require("./chat-panel-layout");
+const createRemoteSshBridgeManager = require("./remote-ssh-bridge-manager");
 
 // ── Autoplay policy: allow sound playback without user gesture ──
 // MUST be set before any BrowserWindow is created (before app.whenReady)
@@ -235,6 +237,11 @@ let providerUsageStatus = {
 
 let providerUsageSnapshot = createEmptyUsageSnapshot();
 let hermesWorkflowBusy = false;
+let remoteSshAutoBridgeStatus = {
+  supported: process.platform === "darwin" || process.platform === "linux",
+  lastScanAt: null,
+  lastPromptTarget: null,
+};
 
 function buildSettingsSnapshot() {
   return {
@@ -247,6 +254,7 @@ function buildSettingsSnapshot() {
       collectorStatus: { ...(globalActivityStatus.collectorStatus || {}) },
     },
     timeCheckinStatus: { ...timeCheckinStatus },
+    remoteSshAutoBridgeStatus: { ...remoteSshAutoBridgeStatus },
     providerUsageStatus: { ...providerUsageStatus },
     providerUsageSnapshot: {
       ...providerUsageSnapshot,
@@ -274,6 +282,7 @@ const _clipboardHistory = createClipboardHistory({
 let _timeCheckinRuntime = null;
 let _timeCheckinBubble = null;
 let _providerUsageRuntime = null;
+let _remoteSshBridgeManager = null;
 
 function getTimeCheckinContext(windowMinutes = null) {
   const minutes = Number.isInteger(windowMinutes) && windowMinutes > 0
@@ -300,10 +309,11 @@ function getProviderUsageCheckerConfig() {
   const effectiveTimeout = savedTimeout >= CHECKER_MIN_TIMEOUT_MS ? savedTimeout : CHECKER_MIN_TIMEOUT_MS;
   return {
     python: cfg.python || "python3",
-    scriptPath: cfg.scriptPath || "",
+    scriptPath: resolveProviderUsageCheckerScriptPath(cfg.scriptPath || ""),
     timeoutMs: effectiveTimeout,
     browser: cfg.browser || "auto",
     includeMiniMax: !!_settingsController.get("providerUsageMiniMaxEnabled"),
+    includeDeepSeek: !!_settingsController.get("providerUsageDeepSeekEnabled"),
   };
 }
 
@@ -475,6 +485,75 @@ function syncProviderUsageFromPrefs() {
   };
   broadcastSettingsSnapshot();
   sendProviderUsageToRenderer();
+}
+
+function resolveRemoteDeployScriptPath() {
+  const appPath = app.getAppPath();
+  const base = appPath.includes("app.asar")
+    ? appPath.replace("app.asar", "app.asar.unpacked")
+    : appPath;
+  return path.join(base, "scripts", "remote-deploy.sh");
+}
+
+function updateRemoteSshTrustedHosts(nextHosts) {
+  const result = _settingsController.applyUpdate("remoteSshTrustedHosts", nextHosts);
+  if (result && typeof result.then === "function") {
+    result.catch((err) => console.warn("Clawd: remote SSH host update failed:", err && err.message));
+  }
+  return result;
+}
+
+async function promptRemoteSshTarget(target) {
+  remoteSshAutoBridgeStatus = {
+    ...remoteSshAutoBridgeStatus,
+    lastPromptTarget: target,
+  };
+  broadcastSettingsSnapshot();
+  const strings = getUiLang() === "zh"
+    ? {
+        title: "设置远程 Clawd Bridge？",
+        detail: `检测到 SSH 连接 ${target}。是否允许 Clawd 在该服务器上安装远程 hooks，并建立后台反向隧道？`,
+        allow: "允许",
+        deny: "忽略",
+      }
+    : {
+        title: "Set up Clawd remote bridge?",
+        detail: `Detected SSH connection ${target}. Allow Clawd to install remote hooks and keep a background reverse tunnel for this server?`,
+        allow: "Allow",
+        deny: "Ignore",
+      };
+  try {
+    const result = await dialog.showMessageBox(mainWindow || undefined, {
+      type: "question",
+      buttons: [strings.allow, strings.deny],
+      defaultId: 0,
+      cancelId: 1,
+      title: strings.title,
+      message: strings.title,
+      detail: strings.detail,
+      noLink: true,
+    });
+    return result.response === 0 ? "allow" : "deny";
+  } catch (err) {
+    console.warn("Clawd: remote SSH prompt failed:", err && err.message);
+    return "deny";
+  }
+}
+
+function syncRemoteSshBridgeFromPrefs() {
+  if (!_remoteSshBridgeManager) return;
+  const enabled = !!_settingsController.get("remoteSshAutoBridgeEnabled");
+  remoteSshAutoBridgeStatus = {
+    ...remoteSshAutoBridgeStatus,
+    supported: _remoteSshBridgeManager.supported(),
+    enabled,
+  };
+  if (enabled && _remoteSshBridgeManager.supported()) {
+    _remoteSshBridgeManager.start();
+  } else {
+    _remoteSshBridgeManager.stop();
+  }
+  broadcastSettingsSnapshot();
 }
 
 function updateTranslatorStatusSuccess(direction = null) {
@@ -1716,6 +1795,18 @@ function previewProviderUsageHud() {
           { key: "fiveHour", label: "5h", status: "warning", usedPercent: 64, remainingPercent: 36, detailText: "coding-plan-search 98%", resetText: "~48m" },
         ],
       },
+      deepseek: {
+        provider: "deepseek",
+        status: "ok",
+        label: "DeepSeek",
+        source: "preview",
+        fetchedAt: Date.now(),
+        error: null,
+        warnings: [],
+        windows: [
+          { key: "usage", label: "Left Budget", status: "warning", usedPercent: 71.44, remainingPercent: 28.56, displayText: "28.56 CNY" },
+        ],
+      },
     },
     {
       overallStatus: "watch",
@@ -2149,6 +2240,8 @@ const _serverCtx = {
   resolvePermissionEntry,
   sendPermissionResponse,
   showPermissionBubble,
+  showCodexNotifyBubble,
+  clearCodexNotifyBubbles,
   replyOpencodePermission,
   isHermesChatOpen: () => !!(chatPanel && !chatPanel.isDestroyed()),
   onHermesPermissionRequest: (permEntry) => sendHermesPermissionToChat(permEntry),
@@ -2375,6 +2468,7 @@ function wireSettingsSubscribers() {
       "providerUsageHudEnabled" in changes
       || "providerUsageRefreshEnabled" in changes
       || "providerUsageMiniMaxEnabled" in changes
+      || "providerUsageDeepSeekEnabled" in changes
       || "providerUsageStaleAfterMinutes" in changes
       || "providerUsageChecker" in changes
       || "providerUsageLastRunAt" in changes
@@ -2383,6 +2477,20 @@ function wireSettingsSubscribers() {
         syncProviderUsageFromPrefs();
       } catch (err) {
         console.warn("Clawd: provider usage sync failed:", err && err.message);
+      }
+    }
+    if ("remoteSshAutoBridgeEnabled" in changes || "remoteSshTrustedHosts" in changes) {
+      try {
+        syncRemoteSshBridgeFromPrefs();
+        if (_remoteSshBridgeManager && changes.remoteSshTrustedHosts) {
+          for (const entry of Object.values(changes.remoteSshTrustedHosts || {})) {
+            if (entry && entry.enabled !== false && entry.lastStatus === "queued") {
+              void _remoteSshBridgeManager.ensureTarget(entry.target, { force: true });
+            }
+          }
+        }
+      } catch (err) {
+        console.warn("Clawd: remote SSH bridge sync failed:", err && err.message);
       }
     }
     if ("hermesChat" in changes) {
@@ -3721,10 +3829,18 @@ if (!gotTheLock) {
     // Set initial Hermes HUD status based on whether Hermes is configured
     const hermesConfig = _settingsController.get("hermesChat") || {};
     updateHermesStatus(hermesConfig.command ? "available" : "offline");
+    _remoteSshBridgeManager = createRemoteSshBridgeManager({
+      getSnapshot: () => _settingsController.getSnapshot(),
+      updateTrustedHosts: updateRemoteSshTrustedHosts,
+      promptTarget: promptRemoteSshTarget,
+      deployScript: resolveRemoteDeployScriptPath(),
+      logger: (msg) => console.warn("Clawd:", msg),
+    });
     syncMacTypingMonitorFromPrefs();
     syncGlobalActivityFromPrefs();
     syncTimeCheckinFromPrefs();
     syncProviderUsageFromPrefs();
+    syncRemoteSshBridgeFromPrefs();
     void maybePromptMacTypingPermission();
 
     // Register global shortcut for toggling pet visibility
@@ -3804,6 +3920,7 @@ if (!gotTheLock) {
     stopGlobalActivityCollectors();
     if (_globalRulesEngine) _globalRulesEngine.stop();
     if (_providerUsageRuntime) _providerUsageRuntime.stop();
+    if (_remoteSshBridgeManager) _remoteSshBridgeManager.stop();
     if (_codexMonitor) _codexMonitor.stop();
     if (_geminiMonitor) _geminiMonitor.stop();
     stopTopmostWatchdog();

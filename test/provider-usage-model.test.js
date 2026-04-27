@@ -30,6 +30,7 @@ describe("provider-usage-model Hermes status", () => {
     assert.strictEqual(next.hermesStatus.status, "available");
     assert.ok(next.providers.codex);
     assert.ok(next.providers.minimax);
+    assert.ok(next.providers.deepseek);
   });
 });
 
@@ -70,5 +71,46 @@ describe("provider-usage-model percent normalization", () => {
     assert.strictEqual(group.windows[0].status, "unavailable");
     assert.strictEqual(group.windows[0].usedPercent, null);
     assert.strictEqual(group.windows[0].remainingPercent, null);
+  });
+
+  it("allows provider windows with explicit status and detail text", () => {
+    const group = normalizeUsageSnapshot("deepseek", {
+      windows: {
+        primary: {
+          status: "ok",
+          display_text: "8.20 CNY",
+          detail_text: "Balance $8.20",
+        },
+      },
+    }, 1234);
+
+    assert.strictEqual(group.status, "ok");
+    assert.strictEqual(group.windows[0].status, "ok");
+    assert.strictEqual(group.windows[0].displayText, "8.20 CNY");
+    assert.strictEqual(group.windows[0].detailText, "Balance $8.20");
+    assert.strictEqual(group.windows[0].usedPercent, null);
+  });
+
+  it("normalizes DeepSeek left-budget percentages for the usage bar", () => {
+    const group = normalizeUsageSnapshot("deepseek", {
+      windows: {
+        primary: {
+          status: "ok",
+          used_percent: 71.43,
+          remaining_percent: 28.57,
+          display_text: "28.57 CNY",
+        },
+      },
+      extras: {
+        budget_base: 100,
+        currency: "CNY",
+      },
+    }, 1234);
+
+    assert.strictEqual(group.status, "ok");
+    assert.strictEqual(group.windows[0].label, "Left Budget");
+    assert.strictEqual(group.windows[0].usedPercent, 71.43);
+    assert.strictEqual(group.windows[0].remainingPercent, 28.57);
+    assert.strictEqual(group.windows[0].displayText, "28.57 CNY");
   });
 });

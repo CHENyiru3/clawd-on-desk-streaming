@@ -1,6 +1,6 @@
 "use strict";
 
-const PROVIDER_ORDER = Object.freeze(["codex", "minimax"]);
+const PROVIDER_ORDER = Object.freeze(["codex", "minimax", "deepseek"]);
 
 const PROVIDER_WINDOW_MAP = Object.freeze({
   codex: [
@@ -10,11 +10,15 @@ const PROVIDER_WINDOW_MAP = Object.freeze({
   minimax: [
     { key: "fiveHour", label: "5h", sourceKeys: ["primary"], sourceNames: ["5h", "five_hour"] },
   ],
+  deepseek: [
+    { key: "usage", label: "Left Budget", sourceKeys: ["primary"], sourceNames: ["usage", "balance", "left budget"] },
+  ],
 });
 
 function providerLabel(provider) {
   if (provider === "codex") return "Codex";
   if (provider === "minimax") return "MiniMax";
+  if (provider === "deepseek") return "DeepSeek";
   return provider;
 }
 
@@ -41,6 +45,7 @@ function createUsageWindow(overrides = {}) {
     status: overrides.status || statusFromRemaining(remainingPercent),
     usedPercent,
     remainingPercent,
+    displayText: typeof overrides.displayText === "string" ? overrides.displayText : null,
     detailText: typeof overrides.detailText === "string" ? overrides.detailText : null,
     resetText: typeof overrides.resetText === "string" ? overrides.resetText : null,
   };
@@ -51,7 +56,7 @@ function createEmptyProviderGroup(provider, overrides = {}) {
     key: spec.key,
     label: spec.label,
     status: "unavailable",
-    detailText: provider === "minimax" ? "Not connected" : null,
+    detailText: provider === "minimax" || provider === "deepseek" ? "Not connected" : null,
   }));
   return {
     provider,
@@ -79,7 +84,8 @@ function providerGroupHasUsableData(group) {
   if (!group || !Array.isArray(group.windows)) return false;
   return group.windows.some((windowInfo) => windowInfo
     && ((typeof windowInfo.remainingPercent === "number" && Number.isFinite(windowInfo.remainingPercent))
-      || (typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent))));
+      || (typeof windowInfo.usedPercent === "number" && Number.isFinite(windowInfo.usedPercent))
+      || (typeof windowInfo.displayText === "string" && windowInfo.displayText.trim())));
 }
 
 function markProviderGroupStale(group, warning, fetchedAt = Date.now()) {
@@ -103,6 +109,7 @@ function createEmptyUsageSnapshot() {
     providers: {
       codex: createEmptyProviderGroup("codex"),
       minimax: createEmptyProviderGroup("minimax"),
+      deepseek: createEmptyProviderGroup("deepseek"),
     },
     hermesSummary: {
       overallStatus: "unknown",
@@ -131,7 +138,7 @@ function buildWindowFromRaw(provider, spec, rawWindow, extras) {
       key: spec.key,
       label: spec.label,
       status: "unavailable",
-      detailText: provider === "minimax" ? "Not connected" : null,
+      detailText: provider === "minimax" || provider === "deepseek" ? "Not connected" : null,
     });
   }
 
@@ -140,13 +147,16 @@ function buildWindowFromRaw(provider, spec, rawWindow, extras) {
   if (usedPercent === null && remainingPercent !== null) usedPercent = normalizePercent(100 - remainingPercent);
   if (remainingPercent === null && usedPercent !== null) remainingPercent = normalizePercent(100 - usedPercent);
   const detailText = typeof rawWindow.detail_text === "string" ? rawWindow.detail_text : null;
+  const displayText = typeof rawWindow.display_text === "string" ? rawWindow.display_text : null;
+  const explicitStatus = typeof rawWindow.status === "string" ? rawWindow.status : null;
 
   return createUsageWindow({
     key: spec.key,
     label: spec.label,
     usedPercent,
     remainingPercent,
-    status: statusFromRemaining(remainingPercent),
+    status: explicitStatus || statusFromRemaining(remainingPercent),
+    displayText,
     detailText,
     resetText: rawWindow.reset_description || rawWindow.resets_at || null,
   });
@@ -187,7 +197,7 @@ function normalizeUsageSnapshot(provider, rawSnapshot, now = Date.now()) {
     key: spec.key,
     label: spec.label,
     status: "unavailable",
-    detailText: provider === "minimax" ? "Not connected" : null,
+    detailText: provider === "minimax" || provider === "deepseek" ? "Not connected" : null,
   }));
 
   const explicitStatus = typeof rawSnapshot.status === "string" ? rawSnapshot.status : null;

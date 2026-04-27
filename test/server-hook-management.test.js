@@ -109,6 +109,30 @@ function makeServer(overrides = {}) {
   };
 }
 
+function postJson(server, url, payload) {
+  return new Promise((resolve) => {
+    const req = new EventEmitter();
+    req.method = "POST";
+    req.url = url;
+    const res = {
+      statusCode: null,
+      headers: null,
+      body: null,
+      writeHead(code, headers) {
+        this.statusCode = code;
+        this.headers = headers || {};
+      },
+      end(body) {
+        this.body = body;
+        resolve(this);
+      },
+    };
+    server._handler(req, res);
+    req.emit("data", Buffer.from(JSON.stringify(payload)));
+    req.emit("end");
+  });
+}
+
 describe("server Claude hook management", () => {
   it("startup syncs Claude hooks and starts watcher when automatic management is enabled", () => {
     const { api, syncCalls, getWatcher } = makeServer({
@@ -169,5 +193,58 @@ describe("server Claude hook management", () => {
 
     assert.deepStrictEqual(first.syncCalls, ["gemini", "codebuddy", "kiro", "opencode"]);
     assert.deepStrictEqual(second.syncCalls, ["gemini", "codebuddy", "kiro", "opencode"]);
+  });
+});
+
+describe("server Codex remote permission notification", () => {
+  it("shows a read-only Codex notification bubble from remote /state events", async () => {
+    const updates = [];
+    const bubbles = [];
+    const { api, servers } = makeServer({
+      STATE_SVGS: { notification: true, working: true },
+      isAgentEnabled: () => true,
+      updateSession: (...args) => updates.push(args),
+      showCodexNotifyBubble: (payload) => bubbles.push(payload),
+    });
+
+    api.startHttpServer();
+    const res = await postJson(servers[0], "/state", {
+      state: "notification",
+      event: "codex-permission",
+      session_id: "codex:remote-1",
+      agent_id: "codex",
+      cwd: "/remote/project",
+      host: "maizie-gpu2",
+      permission_detail: { command: "date" },
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.strictEqual(updates.length, 1);
+    assert.strictEqual(updates[0][0], "codex:remote-1");
+    assert.strictEqual(updates[0][1], "notification");
+    assert.strictEqual(updates[0][8], "codex");
+    assert.strictEqual(updates[0][9], "maizie-gpu2");
+    assert.deepStrictEqual(bubbles, [{ sessionId: "codex:remote-1", command: "date" }]);
+  });
+
+  it("clears a Codex notification bubble when a later remote state arrives", async () => {
+    const cleared = [];
+    const { api, servers } = makeServer({
+      STATE_SVGS: { notification: true, working: true },
+      isAgentEnabled: () => true,
+      updateSession: () => {},
+      clearCodexNotifyBubbles: (sessionId) => cleared.push(sessionId),
+    });
+
+    api.startHttpServer();
+    const res = await postJson(servers[0], "/state", {
+      state: "working",
+      event: "event_msg:exec_command_end",
+      session_id: "codex:remote-1",
+      agent_id: "codex",
+    });
+
+    assert.strictEqual(res.statusCode, 200);
+    assert.deepStrictEqual(cleared, ["codex:remote-1"]);
   });
 });

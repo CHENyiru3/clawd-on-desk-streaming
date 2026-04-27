@@ -23,6 +23,7 @@ const { postStateToRunningServer, readHostPrefix } = require("./server-config");
 
 const SESSION_DIR = path.join(os.homedir(), ".codex", "sessions");
 const POLL_INTERVAL_MS = 1500;
+const APPROVAL_HEURISTIC_MS = 2000;
 
 // JSONL record type[:subtype] → pet state
 // ⚠️ Duplicated from agents/codex.js logEventMap (zero-dep requirement) — keep in sync
@@ -77,7 +78,7 @@ function extractSessionId(fileName) {
   return parts.slice(-5).join("-");
 }
 
-function postState(sessionId, state, event, cwd) {
+function postState(sessionId, state, event, cwd, extra = {}) {
   const body = JSON.stringify({
     state,
     session_id: sessionId,
@@ -85,12 +86,49 @@ function postState(sessionId, state, event, cwd) {
     agent_id: "codex",
     cwd: cwd || "",
     host: hostPrefix,
+    ...extra,
   });
   postStateToRunningServer(
     body,
     { timeoutMs: 100, preferredPort },
     () => {} // fire and forget — tunnel may be down
   );
+}
+
+function extractShellCommand(payload) {
+  if (!payload || typeof payload !== "object") return "";
+  if (payload.name !== "shell_command" && payload.name !== "exec_command") return "";
+  try {
+    const args = typeof payload.arguments === "string"
+      ? JSON.parse(payload.arguments)
+      : payload.arguments;
+    if (args && args.command) return String(args.command);
+    if (args && args.cmd) return String(args.cmd);
+  } catch {}
+  return "";
+}
+
+function isExplicitApprovalRequest(payload) {
+  if (!payload || typeof payload !== "object") return false;
+  if (payload.name !== "shell_command" && payload.name !== "exec_command") return false;
+  try {
+    const args = typeof payload.arguments === "string"
+      ? JSON.parse(payload.arguments)
+      : payload.arguments;
+    if (!args || typeof args !== "object") return false;
+    if (args.sandbox_permissions === "require_escalated") return true;
+    if (typeof args.justification === "string" && args.justification.trim()) return true;
+  } catch {}
+  return false;
+}
+
+function postCodexPermission(entry, key, command) {
+  const safeCommand = String(command || "").slice(0, 500);
+  entry.lastEventTime = Date.now();
+  postState(entry.sessionId, "notification", "codex-permission", entry.cwd, {
+    permission_detail: { command: safeCommand },
+    source_event: key,
+  });
 }
 
 function processLine(line, entry) {
@@ -112,8 +150,37 @@ function processLine(line, entry) {
     entry.cwd = payload.cwd || "";
   }
 
+  if (key === "event_msg:exec_command_end" || key === "response_item:function_call_output") {
+    if (entry.approvalTimer) {
+      clearTimeout(entry.approvalTimer);
+      entry.approvalTimer = null;
+    }
+  }
+
   const state = LOG_EVENT_MAP[key];
   if (state === undefined || state === null) return;
+
+  if (state === "attention" || state === "idle") {
+    if (entry.approvalTimer) {
+      clearTimeout(entry.approvalTimer);
+      entry.approvalTimer = null;
+    }
+  }
+
+  if (key === "response_item:function_call") {
+    if (entry.approvalTimer) clearTimeout(entry.approvalTimer);
+    const command = extractShellCommand(payload);
+    if (command) {
+      if (isExplicitApprovalRequest(payload)) {
+        postCodexPermission(entry, key, command);
+        return;
+      }
+      entry.approvalTimer = setTimeout(() => {
+        entry.approvalTimer = null;
+        postCodexPermission(entry, key, command);
+      }, APPROVAL_HEURISTIC_MS);
+    }
+  }
 
   // Avoid spamming same state
   if (state === entry.lastState && state === "working") return;
@@ -142,6 +209,7 @@ function pollFile(filePath, fileName) {
       lastEventTime: Date.now(),
       lastState: null,
       partial: "",
+      approvalTimer: null,
     };
     tracked.set(filePath, entry);
   }
@@ -174,6 +242,7 @@ function cleanStaleFiles() {
   const now = Date.now();
   for (const [filePath, entry] of tracked) {
     if (now - entry.lastEventTime > 300000) {
+      if (entry.approvalTimer) clearTimeout(entry.approvalTimer);
       postState(entry.sessionId, "sleeping", "stale-cleanup", entry.cwd);
       tracked.delete(filePath);
     }
@@ -220,11 +289,17 @@ if (!onceMode) {
 
   process.on("SIGINT", () => {
     clearInterval(interval);
+    for (const entry of tracked.values()) {
+      if (entry.approvalTimer) clearTimeout(entry.approvalTimer);
+    }
     console.log("\nStopped.");
     process.exit(0);
   });
   process.on("SIGTERM", () => {
     clearInterval(interval);
+    for (const entry of tracked.values()) {
+      if (entry.approvalTimer) clearTimeout(entry.approvalTimer);
+    }
     process.exit(0);
   });
 }

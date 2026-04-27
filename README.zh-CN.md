@@ -96,7 +96,7 @@ npm install
 npm start
 ```
 
-**Claude Code** 和 **Codex CLI** 开箱即用。其他 Agent（Copilot、Kiro 等）需一次性配置。也涵盖远程 SSH、WSL 及平台说明（macOS / Linux）：**[docs/setup-guide.zh-CN.md](docs/setup-guide.zh-CN.md)**
+**Claude Code** 和 **Codex CLI** 对本机会话开箱即用。在 macOS/Linux 上，从 Ghostty 或其他终端打开的远程 SSH 会话（包括 `gg` alias）会被自动检测；每台主机第一次出现时允许提示后，Clawd 会自动执行桥接配置。也可以手动运行 `bash scripts/remote-deploy.sh user@host --auto`。其他 Agent（Copilot、Kiro 等）需一次性配置。详见远程 SSH、WSL 及平台说明：**[docs/setup-guide.zh-CN.md](docs/setup-guide.zh-CN.md)**
 
 ## 已知限制
 

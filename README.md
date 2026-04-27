@@ -42,7 +42,8 @@ A desktop pet that reacts to your AI coding agent sessions in real-time. Clawd l
 - **Cursor Agent** — [Cursor IDE hooks](https://cursor.com/docs/agent/hooks) in `~/.cursor/hooks.json` (registered automatically when Clawd starts, or run `npm run install:cursor-hooks`)
 - **Kiro CLI** — command hooks injected into custom agent configs under `~/.kiro/agents/`, plus an auto-created `clawd` agent that is re-synced from Kiro's built-in `kiro_default` whenever Clawd starts, so you can opt into hooks with minimal behavior drift via `kiro-cli --agent clawd` or `/agent swap clawd` (registered automatically when Clawd starts, or run `npm run install:kiro-hooks`). State hooks have been verified on macOS.
 - **opencode** — [plugin integration](https://opencode.ai/docs/plugins) via `~/.config/opencode/opencode.json` (registered automatically when Clawd starts); zero-latency event streaming, permission bubbles with Allow/Always/Deny, and building animations when parallel subagents are spawned via the `task` tool
-- **Hermes** — opens a chat panel beside the pet; configure the CLI command under Settings → AI Work; dangerous commands show an in-chat permission card (Allow Once / Allow Session / Allow Always / Deny); session status (offline / busy / idle / error) shown in the panel titlebar and the right-side HUD; no modification to the Hermes package required
+- **Hermes** — opens a chat panel beside the pet; configure the CLI command under Settings → AI Work; dangerous commands show an in-chat permission card (Allow Once / Allow Session / Allow Always / Deny); session status (offline / busy / idle / error) shown in the panel titlebar; no modification to the Hermes package required
+- **Remote SSH** — on macOS/Linux, detects local SSH sessions, including `gg`/goto-ssh aliases, asks once per host, then configures the remote Claude/Codex bridge automatically
 - **Multi-agent coexistence** — run all agents simultaneously; Clawd tracks each session independently
 
 ### Animations & Interaction
@@ -119,7 +120,7 @@ npm install
 npm start
 ```
 
-**Claude Code** and **Codex CLI** work out of the box. Other agents (Copilot, Kiro, etc.) need one-time setup. Also covers remote SSH, WSL, and platform-specific notes (macOS / Linux): **[docs/setup-guide.md](docs/setup-guide.md)**
+**Claude Code** and **Codex CLI** work out of the box for local sessions. On macOS/Linux, remote SSH sessions from Ghostty or another terminal, including `gg` aliases, are detected automatically; approve the first prompt for each host and Clawd runs the bridge setup. You can also run `bash scripts/remote-deploy.sh user@host --auto` manually. Other agents (Copilot, Kiro, etc.) need one-time setup. See remote SSH, WSL, and platform notes: **[docs/setup-guide.md](docs/setup-guide.md)**
 
 ## Known Limitations
 

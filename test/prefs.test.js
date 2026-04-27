@@ -69,6 +69,12 @@ describe("prefs.getDefaults", () => {
     );
   });
 
+  it("seeds remote SSH auto bridge prefs", () => {
+    const d = prefs.getDefaults();
+    assert.strictEqual(typeof d.remoteSshAutoBridgeEnabled, "boolean");
+    assert.deepStrictEqual(d.remoteSshTrustedHosts, {});
+  });
+
   it("seeds MiniMax translation prefs", () => {
     const d = prefs.getDefaults();
     assert.strictEqual(d.translateProvider, "minimax");
@@ -96,6 +102,7 @@ describe("prefs.getDefaults", () => {
     assert.strictEqual(d.providerUsageChecker.timeoutMs, 300000);
     assert.strictEqual(d.providerUsageChecker.browser, "auto");
     assert.strictEqual(d.providerUsageMiniMaxEnabled, true);
+    assert.strictEqual(d.providerUsageDeepSeekEnabled, true);
   });
 
   it("seeds all known agents as enabled", () => {
@@ -232,6 +239,30 @@ describe("prefs.validate", () => {
     assert.strictEqual(v.globalActivityRules.clipboardReaction, true);
     assert.strictEqual(typeof v.globalActivityRules.notificationReaction, "boolean");
     assert.strictEqual("frontmostAppReaction" in v.globalActivityRules, false);
+  });
+
+  it("normalizes remote SSH trusted hosts", () => {
+    const v = prefs.validate({
+      remoteSshTrustedHosts: {
+        "user@host": {
+          enabled: true,
+          prefix: " work ",
+          lastStatus: "ok",
+          lastError: "",
+          lastCheckedAt: 123.4,
+        },
+        bad: "nope",
+      },
+    });
+    assert.deepStrictEqual(v.remoteSshTrustedHosts["user@host"], {
+      target: "user@host",
+      enabled: true,
+      prefix: "work",
+      lastStatus: "ok",
+      lastError: null,
+      lastCheckedAt: 123,
+    });
+    assert.strictEqual(v.remoteSshTrustedHosts.bad, undefined);
   });
 
   it("normalizes agents (drops malformed entries)", () => {

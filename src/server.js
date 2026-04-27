@@ -264,6 +264,7 @@ function startHttpServer() {
           const agentId = typeof data.agent_id === "string" ? data.agent_id : "claude-code";
           const host = typeof data.host === "string" ? data.host : null;
           const headless = data.headless === true;
+          const sid = session_id || "default";
           // Agent gate: user disabled this agent in the settings panel. Drop
           // with 204 so hook scripts get a quick no-op response instead of
           // hanging on our HTTP connection. Still surfaces as a success code
@@ -273,8 +274,22 @@ function startHttpServer() {
             res.end();
             return;
           }
+          if (agentId === "codex" && state === "notification" && event === "codex-permission") {
+            const detail = data.permission_detail && typeof data.permission_detail === "object"
+              ? data.permission_detail
+              : {};
+            const command = typeof detail.command === "string"
+              ? detail.command
+              : (typeof data.command === "string" ? data.command : "");
+            ctx.updateSession(sid, "notification", event, source_pid, cwd, editor, pidChain, agentPid, agentId, host, headless, display_svg);
+            if (typeof ctx.showCodexNotifyBubble === "function") {
+              ctx.showCodexNotifyBubble({ sessionId: sid, command });
+            }
+            res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
+            res.end("ok");
+            return;
+          }
           if (ctx.STATE_SVGS[state]) {
-            const sid = session_id || "default";
             if (state.startsWith("mini-") && !svg) {
               res.writeHead(400);
               res.end("mini states require svg override");
@@ -291,6 +306,9 @@ function startHttpServer() {
               const safeSvg = path.basename(svg);
               ctx.setState(state, safeSvg);
             } else {
+              if (agentId === "codex" && typeof ctx.clearCodexNotifyBubbles === "function") {
+                ctx.clearCodexNotifyBubbles(sid);
+              }
               ctx.updateSession(sid, state, event, source_pid, cwd, editor, pidChain, agentPid, agentId, host, headless, display_svg);
             }
             res.writeHead(200, { [CLAWD_SERVER_HEADER]: CLAWD_SERVER_ID });
