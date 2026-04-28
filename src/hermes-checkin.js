@@ -2,6 +2,7 @@
 
 const childProcess = require("child_process");
 const { buildPromptInvocation } = require("./hermes-command");
+const { buildCliEnv } = require("./cli-env");
 const { summarizeClipboardContext } = require("./clipboard-context-summary");
 const { cleanHermesCheckinOutput } = require("./hermes-checkin-cleaner");
 
@@ -152,6 +153,7 @@ function runHermesCheckin(options = {}) {
     const child = childProcess.spawn(command, args, {
       cwd,
       stdio: ["pipe", "pipe", "pipe"],
+      env: buildCliEnv(),
     });
 
     const timer = setTimeout(() => {
@@ -188,11 +190,16 @@ function runHermesCheckin(options = {}) {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      logger(`Hermes check-in spawn failed: ${err && err.message}`);
+      const commandNotFound = err && err.code === "ENOENT";
+      if (!commandNotFound) {
+        logger(`Hermes check-in spawn failed: ${err && err.message}`);
+      }
       resolve({
         ok: false,
-        code: "spawn",
-        message: "Time check-in command failed to start.",
+        code: commandNotFound ? "command_not_found" : "spawn",
+        message: commandNotFound
+          ? `Time check-in command was not found: ${command}. Check the Hermes command in Settings.`
+          : "Time check-in command failed to start.",
         prompt,
         fallbackMessage: buildFallbackMessage({ now, context }),
       });

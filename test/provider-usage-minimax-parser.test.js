@@ -45,6 +45,19 @@ print(json.dumps(window.to_dict(), ensure_ascii=False))
     assert.strictEqual(result.display_text, "98%");
   });
 
+  it("keeps zero checked usage as full leftover quota", () => {
+    const result = runPythonSnippet(`
+import json
+from providers import minimax
+window = minimax._extract_primary_window("Starter月度套餐 可用额度 0% 截止日期 2026-05-01")
+print(json.dumps(window.to_dict(), ensure_ascii=False))
+`);
+
+    assert.strictEqual(result.used_percent, 0);
+    assert.strictEqual(result.remaining_percent, 100);
+    assert.strictEqual(result.display_text, "100%");
+  });
+
   it("ignores slash-form dates when looking for quota counts", () => {
     const result = runPythonSnippet(`
 import json

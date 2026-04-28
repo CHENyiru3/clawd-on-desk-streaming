@@ -3,6 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 const childProcess = require("child_process");
+const { buildCliEnv } = require("./cli-env");
 
 // ── ANSI strip ──────────────────────────────────────────────────────────────
 const ANSI_REGEX = /\x1B\[[0-9;]*[a-zA-Z]/g;
@@ -167,14 +168,13 @@ function sendMessage(options) {
     stdio: ["pipe", "pipe", "pipe"],
     // Inject env vars for the Hermes permission bridge
     // (hooks/hermes-permission-bridge.py, injected via PYTHONPATH).
-    env: {
-      ...process.env,
+    env: buildCliEnv(process.env, {
       PYTHONPATH: pythonPath,
       HERMES_PERMISSION_ENABLED: "1",
       CLAWD_PERMISSION_URL: `http://127.0.0.1:${bridgeCtx && bridgeCtx.clawdServerPort ? bridgeCtx.clawdServerPort : 23333}/permission`,
       HERMES_BRIDGE_SESSION_ID: bridgeSessionId,
       HERMES_SESSION_KEY: bridgeSessionId,
-    },
+    }),
   });
 
   child.stdout.on("data", (chunk) => {

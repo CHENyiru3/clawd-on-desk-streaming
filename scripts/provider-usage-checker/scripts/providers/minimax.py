@@ -230,7 +230,7 @@ def _parse_pct(text: str) -> tuple[float | None, float | None]:
     presents leftover quota, so a checked "2%" becomes 98% remaining.
     """
     m = _find_usage_percent(text)
-    if not m:
+    if m is None:
         return None, None
     val = float(m)
     return val, round(max(0.0, 100.0 - val), 2)

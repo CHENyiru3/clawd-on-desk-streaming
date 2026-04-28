@@ -42,8 +42,8 @@ describe("hermes-checkin prompt building", () => {
 
   it("runs hermes through non-interactive chat mode while preserving resume args", async () => {
     let captured = null;
-    const spawnMock = mock.method(childProcess, "spawn", (command, args) => {
-      captured = { command, args };
+    const spawnMock = mock.method(childProcess, "spawn", (command, args, options) => {
+      captured = { command, args, options };
       const child = new events.EventEmitter();
       child.stdout = new events.EventEmitter();
       child.stderr = new events.EventEmitter();
@@ -84,7 +84,9 @@ describe("hermes-checkin prompt building", () => {
         "--resume",
         "20260417_140020_0b84f5",
       ],
+      options: captured.options,
     });
+    assert.ok(captured.options.env.PATH.includes("/.local/bin"));
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.cleanedText, "Warm check-in.");
     assert.strictEqual(result.cleanedChanged, true);
@@ -121,5 +123,42 @@ describe("hermes-checkin prompt building", () => {
     assert.strictEqual(result.ok, true);
     assert.strictEqual(result.cleanedText, "Keep the pace light and finish one clean thing.");
     assert.strictEqual(result.code, "nonzero_with_output");
+  });
+
+  it("returns a non-logging command_not_found result for ENOENT", async () => {
+    const logs = [];
+    const spawnMock = mock.method(childProcess, "spawn", () => {
+      const child = new events.EventEmitter();
+      child.stdout = new events.EventEmitter();
+      child.stderr = new events.EventEmitter();
+      child.stdin = {
+        write() {},
+        end() {},
+      };
+      queueMicrotask(() => {
+        const err = new Error("spawn hermes ENOENT");
+        err.code = "ENOENT";
+        child.emit("error", err);
+      });
+      return child;
+    });
+
+    const result = await runHermesCheckin({
+      config: {
+        command: "hermes",
+        args: [],
+        timeoutMs: 30000,
+      },
+      context: { entries: [], counts: { totalEntries: 0, redactedEntries: 0 } },
+      now: new Date(2026, 3, 17, 17, 0, 0, 0),
+      slotLabel: "5:00 PM Check-in",
+      logger: (msg) => logs.push(msg),
+    });
+
+    spawnMock.mock.restore();
+    assert.strictEqual(result.ok, false);
+    assert.strictEqual(result.code, "command_not_found");
+    assert.match(result.message, /command was not found: hermes/);
+    assert.deepStrictEqual(logs, []);
   });
 });
